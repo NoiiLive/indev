@@ -76,7 +76,8 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 			if hit:IsDescendantOf(character) then return end
 			if hit.Name == "VisualBullet" then return end
 
-			if string.lower(hit.Name) == "fence" then return end
+			local hitName = string.lower(hit.Name)
+			if hitName == "fence" or hitName == "water" then return end
 
 			local hitChar = hit.Parent
 			local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
