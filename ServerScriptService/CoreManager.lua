@@ -1,10 +1,10 @@
 -- @ScriptType: Script
+-- @ScriptType: Script
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
-local Debris = game:GetService("Debris")
 
 local GameData = require(ReplicatedStorage:WaitForChild("GameData"))
 
@@ -41,6 +41,10 @@ weaponActionEvent.Parent = ReplicatedStorage
 local damageIndicatorEvent = Instance.new("RemoteEvent")
 damageIndicatorEvent.Name = "DamageIndicatorEvent"
 damageIndicatorEvent.Parent = ReplicatedStorage
+
+local renderBulletEvent = Instance.new("RemoteEvent")
+renderBulletEvent.Name = "RenderBulletEvent"
+renderBulletEvent.Parent = ReplicatedStorage
 
 local initialInventory = HttpService:JSONEncode({
 	Hotbar = {GameData.Items["Smith & Wesson .38"].Name, "", "", "", ""},
@@ -140,6 +144,15 @@ local SkinColors = {
 
 local sessionData = {}
 
+local function bindValueSync(player, valObj)
+	valObj.Changed:Connect(function(newVal)
+		local data = sessionData[player.UserId]
+		if data then
+			data[valObj.Name] = newVal
+		end
+	end)
+end
+
 local function generateRandomData(gender, faction, spawnName, skinColorIndex)
 	local pool = Pools[gender] or Pools.Masc
 	local fac = faction or "STREETS"
@@ -235,7 +248,7 @@ local function createHitbox(character)
 	hitbox.Size = Vector3.new(4, 4.5, 2.5) 
 	hitbox.BrickColor = BrickColor.new("Really red")
 	hitbox.Material = Enum.Material.Neon
-	hitbox.Transparency = 0.8
+	hitbox.Transparency = 1
 	hitbox.CanCollide = false
 	hitbox.Massless = true
 	hitbox.CFrame = rootPart.CFrame * CFrame.new(0, -0.75, 0)
@@ -251,7 +264,7 @@ local function createHitbox(character)
 	headHitbox.Size = Vector3.new(2, 2, 2)
 	headHitbox.BrickColor = BrickColor.new("New Yeller")
 	headHitbox.Material = Enum.Material.Neon
-	headHitbox.Transparency = 0.8
+	headHitbox.Transparency = 1
 	headHitbox.CanCollide = false
 	headHitbox.Massless = true
 	headHitbox.CFrame = head.CFrame
@@ -300,6 +313,7 @@ submitEvent.OnServerEvent:Connect(function(player, gender, faction, spawnName, s
 				valObj = type(value) == "number" and Instance.new("NumberValue") or Instance.new("StringValue")
 				valObj.Name = key
 				valObj.Parent = playerFolder
+				bindValueSync(player, valObj)
 			end
 			valObj.Value = value
 		end
@@ -443,156 +457,6 @@ equipEvent.OnServerEvent:Connect(function(player, itemName)
 	end
 end)
 
-weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, targetPos)
-	local data = sessionData[player.UserId]
-	local playerFolder = player:FindFirstChild("AvatarData")
-	if not data or not playerFolder then return end
-
-	local itemData = GameData.Items[weaponName]
-	if not itemData then return end
-
-	local character = player.Character
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-
-	local function play3DSound(soundName)
-		if not rootPart then return end
-		local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-		if soundsFolder then
-			local s = soundsFolder:FindFirstChild(soundName)
-			if s and s:IsA("Sound") then
-				local sClone = s:Clone()
-				sClone.Parent = rootPart
-				sClone:Play()
-				Debris:AddItem(sClone, sClone.TimeLength > 0 and sClone.TimeLength + 0.5 or 2)
-			end
-		end
-	end
-
-	local function spawnBullet()
-		if typeof(targetPos) ~= "Vector3" then return end
-		local rightArm = character:FindFirstChild("Right Arm")
-		local startPos = rightArm and rightArm.Position or (rootPart and rootPart.Position)
-		if not startPos then return end
-
-		local direction = (targetPos - startPos).Unit
-		local bulletSpeed = itemData.BulletSpeed or 500
-
-		local bullet = Instance.new("Part")
-		bullet.Name = "Bullet"
-		bullet.Size = Vector3.new(0.5, 0.5, 1.5)
-		bullet.Transparency = 1
-		bullet.CanCollide = false
-		bullet.Massless = true
-		bullet.CFrame = CFrame.lookAt(startPos + direction * 4, startPos + direction * 5)
-
-		local visual = Instance.new("Part")
-		visual.Name = "VisualBullet"
-		visual.Size = Vector3.new(0.1, 0.1, 1.2)
-		visual.BrickColor = BrickColor.new("New Yeller")
-		visual.Material = Enum.Material.Neon
-		visual.CanCollide = false
-		visual.Massless = true
-		visual.CFrame = bullet.CFrame
-		visual.Parent = bullet
-
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = bullet
-		weld.Part1 = visual
-		weld.Parent = visual
-
-		local att0 = Instance.new("Attachment", visual)
-		att0.Position = Vector3.new(0, 0, -visual.Size.Z / 2)
-		local att1 = Instance.new("Attachment", visual)
-		att1.Position = Vector3.new(0, 0, visual.Size.Z / 2)
-
-		local trail = Instance.new("Trail")
-		trail.Attachment0 = att0
-		trail.Attachment1 = att1
-		trail.Color = ColorSequence.new(Color3.new(1, 0.8, 0))
-		trail.Lifetime = 0.15
-		trail.MinLength = 0
-		trail.Parent = visual
-
-		local bv = Instance.new("BodyVelocity")
-		bv.Velocity = direction * bulletSpeed
-		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-		bv.Parent = bullet
-
-		bullet.Parent = workspace
-
-		bullet:SetNetworkOwner(nil)
-
-		Debris:AddItem(bullet, 3)
-
-		local hitConnection
-		hitConnection = bullet.Touched:Connect(function(hit)
-			if hit:IsDescendantOf(character) then return end
-			if hit.Name == "VisualBullet" then return end
-
-			local hitChar = hit.Parent
-			local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
-
-			if not humanoid and hitChar.Parent:IsA("Model") then
-				hitChar = hitChar.Parent
-				humanoid = hitChar:FindFirstChildOfClass("Humanoid")
-			end
-
-			if humanoid and humanoid.Health > 0 then
-				local isHead = (hit.Name == "Head" or hit.Name == "HeadHitbox")
-				local dmg = itemData.Damage or 25
-				if isHead then dmg = dmg * 1.5 end
-				humanoid:TakeDamage(dmg)
-
-				damageIndicatorEvent:FireClient(player, dmg, hit.Position, isHead)
-
-				if hitConnection then hitConnection:Disconnect() end
-				bullet:Destroy()
-				return
-			end
-
-			if not hit.CanCollide then
-				return 
-			end
-
-			if hitConnection then hitConnection:Disconnect() end
-			bullet:Destroy()
-		end)
-	end
-
-	if action == "Empty" then
-		play3DSound("fire_empty")
-	elseif action == "Fire" then
-		if itemData.MaxClip then
-			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
-			if clipVal and clipVal.Value > 0 then
-				clipVal.Value = clipVal.Value - 1
-				data.ClipAmmo = clipVal.Value
-				if itemData.UseSound then play3DSound(itemData.UseSound) end
-				spawnBullet()
-			end
-		else
-			if itemData.UseSound then play3DSound(itemData.UseSound) end
-			spawnBullet()
-		end
-	elseif action == "Reload" then
-		if itemData.MaxClip then
-			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
-			local reserveVal = playerFolder:FindFirstChild("ReserveAmmo")
-			if clipVal and reserveVal then
-				local needed = itemData.MaxClip - clipVal.Value
-				if needed > 0 and reserveVal.Value > 0 then
-					local taken = math.min(needed, reserveVal.Value)
-					clipVal.Value = clipVal.Value + taken
-					reserveVal.Value = reserveVal.Value - taken
-					data.ClipAmmo = clipVal.Value
-					data.ReserveAmmo = reserveVal.Value
-					if itemData.ReloadSound then play3DSound(itemData.ReloadSound) end
-				end
-			end
-		end
-	end
-end)
-
 Players.PlayerAdded:Connect(function(player)
 	local isNew = false
 	local savedData = nil
@@ -616,6 +480,7 @@ Players.PlayerAdded:Connect(function(player)
 			valObj.Name = key
 			valObj.Value = value
 			valObj.Parent = playerFolder
+			bindValueSync(player, valObj)
 		end
 	end
 	playerFolder.Parent = player
