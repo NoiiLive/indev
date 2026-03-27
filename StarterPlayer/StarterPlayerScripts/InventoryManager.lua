@@ -37,6 +37,24 @@ hotbarFrame.BackgroundTransparency = 0.2
 hotbarFrame.BorderSizePixel = 0
 hotbarFrame.Parent = inventoryGui
 
+local ammoFrame = Instance.new("Frame")
+ammoFrame.Size = UDim2.new(0, 100, 0, 60)
+ammoFrame.Position = UDim2.new(0.5, 190, 1, -80)
+ammoFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ammoFrame.BackgroundTransparency = 0.2
+ammoFrame.BorderSizePixel = 0
+ammoFrame.Visible = false
+ammoFrame.Parent = inventoryGui
+
+local ammoText = Instance.new("TextLabel")
+ammoText.Size = UDim2.new(1, 0, 1, 0)
+ammoText.BackgroundTransparency = 1
+ammoText.Text = "6 / 40"
+ammoText.Font = Enum.Font.Bodoni
+ammoText.TextSize = 24
+ammoText.TextColor3 = Color3.fromRGB(200, 200, 200)
+ammoText.Parent = ammoFrame
+
 local hotbarLayout = Instance.new("UIListLayout")
 hotbarLayout.FillDirection = Enum.FillDirection.Horizontal
 hotbarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -94,14 +112,33 @@ local dragGhost = nil
 local hoverData = nil
 local selectedHotbarSlot = nil
 
-local loadedItemAnims = {Idle = nil, Walk = nil, Run = nil}
+local loadedItemAnims = {Idle = nil, Walk = nil, Run = nil, Use = {}, Reload = nil}
 local currentAnimState = "None"
+local currentUseAnimIndex = 1
 local moveConnection = nil
+local lastFireTime = 0
+local isReloading = false
+
+local function refreshAmmoUI()
+	local avatarData = player:FindFirstChild("AvatarData")
+	if not avatarData then return end
+
+	local clipVal = avatarData:FindFirstChild("ClipAmmo")
+	local resVal = avatarData:FindFirstChild("ReserveAmmo")
+
+	if clipVal and resVal then
+		ammoText.Text = tostring(clipVal.Value) .. " / " .. tostring(resVal.Value)
+	end
+end
 
 local function stopItemAnims()
 	if loadedItemAnims.Idle then loadedItemAnims.Idle:Stop() end
 	if loadedItemAnims.Walk then loadedItemAnims.Walk:Stop() end
 	if loadedItemAnims.Run then loadedItemAnims.Run:Stop() end
+	if loadedItemAnims.Reload then loadedItemAnims.Reload:Stop() end
+	for _, track in ipairs(loadedItemAnims.Use) do
+		track:Stop()
+	end
 end
 
 local function updateEquippedItem()
@@ -113,14 +150,25 @@ local function updateEquippedItem()
 	local equipName = selectedItemName or ""
 	ReplicatedStorage:WaitForChild("EquipEvent"):FireServer(equipName)
 
+	local itemData = selectedItemName and GameData.Items[selectedItemName] or nil
+	if itemData and itemData.MaxClip then
+		ammoFrame.Visible = true
+		refreshAmmoUI()
+	else
+		ammoFrame.Visible = false
+	end
+
 	if moveConnection then 
 		moveConnection:Disconnect() 
 		moveConnection = nil 
 	end
 
 	stopItemAnims()
-	loadedItemAnims = {Idle = nil, Walk = nil, Run = nil}
+	loadedItemAnims = {Idle = nil, Walk = nil, Run = nil, Use = {}, Reload = nil}
+	currentUseAnimIndex = 1
 	currentAnimState = "None"
+	lastFireTime = 0
+	isReloading = false
 
 	local character = player.Character
 	if not character then return end
@@ -129,7 +177,6 @@ local function updateEquippedItem()
 	if not animator then return end
 
 	if selectedItemName and selectedItemName ~= "" then
-		local itemData = GameData.Items[selectedItemName]
 		if itemData and itemData.Animations then
 			local anims = itemData.Animations
 
@@ -145,6 +192,16 @@ local function updateEquippedItem()
 			loadedItemAnims.Idle = loadAnim(anims.Idle)
 			loadedItemAnims.Walk = loadAnim(anims.Walk)
 			loadedItemAnims.Run = loadAnim(anims.Run)
+			loadedItemAnims.Reload = loadAnim(anims.Reload)
+
+			if anims.Use and type(anims.Use) == "table" then
+				for _, useId in ipairs(anims.Use) do
+					local useTrack = loadAnim(useId)
+					if useTrack then
+						table.insert(loadedItemAnims.Use, useTrack)
+					end
+				end
+			end
 
 			local function onRunning(speed)
 				local targetState = "Idle"
@@ -372,9 +429,23 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
+local function hookAmmoListeners(avatarData)
+	local function checkVal(val)
+		if val.Name == "ClipAmmo" or val.Name == "ReserveAmmo" then
+			val.Changed:Connect(refreshAmmoUI)
+			refreshAmmoUI()
+		end
+	end
+	for _, val in ipairs(avatarData:GetChildren()) do
+		checkVal(val)
+	end
+	avatarData.ChildAdded:Connect(checkVal)
+end
+
 player.ChildAdded:Connect(function(child)
 	if child.Name == "AvatarData" then
 		refreshInventory()
+		hookAmmoListeners(child)
 		child.ChildAdded:Connect(function(val)
 			if val.Name == "InventoryData" then
 				refreshInventory()
@@ -394,6 +465,7 @@ if existingData then
 	if invVal then
 		invVal.Changed:Connect(refreshInventory)
 	end
+	hookAmmoListeners(existingData)
 	existingData.ChildAdded:Connect(function(val)
 		if val.Name == "InventoryData" then
 			refreshInventory()
@@ -405,8 +477,87 @@ end
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
+
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if not menuFrame.Visible and selectedHotbarSlot then
+			local selectedItemName = hotbarLabels[selectedHotbarSlot].Text
+			if selectedItemName ~= "" then
+				local itemData = GameData.Items[selectedItemName]
+				if itemData then
+					local canUse = true
+					local currentTime = os.clock()
+
+					if isReloading then
+						canUse = false
+					end
+
+					if canUse and itemData.FireRate then
+						if currentTime - lastFireTime < itemData.FireRate then
+							canUse = false
+						else
+							lastFireTime = currentTime
+						end
+					end
+
+					if canUse then
+						if itemData.MaxClip then
+							local avatarData = player:FindFirstChild("AvatarData")
+							local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
+							if not clipVal or clipVal.Value <= 0 then
+								canUse = false
+								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Empty", selectedItemName)
+							else
+								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName)
+							end
+						else
+							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName)
+						end
+					end
+
+					if canUse then
+						if loadedItemAnims.Use and #loadedItemAnims.Use > 0 then
+							local track = loadedItemAnims.Use[currentUseAnimIndex]
+							if track then
+								track:Play()
+							end
+							currentUseAnimIndex = (currentUseAnimIndex % #loadedItemAnims.Use) + 1
+						end
+					end
+				end
+			end
+		end
+	end
+
 	if input.KeyCode == Enum.KeyCode.B or input.KeyCode == Enum.KeyCode.Backquote then
 		menuFrame.Visible = not menuFrame.Visible
+	elseif input.KeyCode == Enum.KeyCode.R then
+		if not menuFrame.Visible and selectedHotbarSlot and not isReloading then
+			local selectedItemName = hotbarLabels[selectedHotbarSlot].Text
+			if selectedItemName ~= "" then
+				local itemData = GameData.Items[selectedItemName]
+				if itemData and itemData.MaxClip then
+					local avatarData = player:FindFirstChild("AvatarData")
+					local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
+					local resVal = avatarData and avatarData:FindFirstChild("ReserveAmmo")
+
+					if clipVal and resVal and clipVal.Value < itemData.MaxClip and resVal.Value > 0 then
+						isReloading = true
+
+						if loadedItemAnims.Reload then
+							loadedItemAnims.Reload:Play()
+						end
+
+						ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Reload", selectedItemName)
+
+						task.spawn(function()
+							local rTime = itemData.ReloadTime or 1.5
+							task.wait(rTime)
+							isReloading = false
+						end)
+					end
+				end
+			end
+		end
 	elseif input.KeyCode == Enum.KeyCode.One then
 		selectSlot(1)
 	elseif input.KeyCode == Enum.KeyCode.Two then
