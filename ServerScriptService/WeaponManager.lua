@@ -1,5 +1,4 @@
 -- @ScriptType: Script
--- @ScriptType: Script
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
@@ -44,7 +43,6 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		local direction = (targetPos - startPos).Unit
 		local bulletSpeed = itemData.BulletSpeed or 500
 
-		-- Pass the character so other clients know whose body to ignore collisions for
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player then
 				renderBulletEvent:FireClient(p, startPos, direction, bulletSpeed, character)
@@ -78,6 +76,38 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 
 			local hitName = string.lower(hit.Name)
 			if hitName == "fence" or hitName == "water" then return end
+
+			if hitName == "window" and hit.CanCollide then
+				local parent = hit.Parent
+				local brokenWindows = {}
+
+				if parent and parent ~= workspace then
+					for _, child in ipairs(parent:GetChildren()) do
+						if child:IsA("BasePart") and string.lower(child.Name) == "window" and child.CanCollide then
+							brokenWindows[child] = child.Transparency
+							child.Transparency = 1
+							child.CanCollide = false
+						end
+					end
+				else
+					brokenWindows[hit] = hit.Transparency
+					hit.Transparency = 1
+					hit.CanCollide = false
+				end
+
+				task.delay(10, function()
+					for win, origTrans in pairs(brokenWindows) do
+						if win and win.Parent then
+							win.Transparency = origTrans
+							win.CanCollide = true
+						end
+					end
+				end)
+
+				if hitConnection then hitConnection:Disconnect() end
+				bullet:Destroy()
+				return
+			end
 
 			local hitChar = hit.Parent
 			local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
