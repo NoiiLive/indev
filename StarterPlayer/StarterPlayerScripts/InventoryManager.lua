@@ -493,7 +493,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 					if canUse and itemData.FireRate then
 						if currentTime - lastFireTime < itemData.FireRate then
-							canUse = false
+							canUse = falsea
 						else
 							lastFireTime = currentTime
 						end
