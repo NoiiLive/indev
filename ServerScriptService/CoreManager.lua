@@ -29,6 +29,10 @@ local inventoryEvent = Instance.new("RemoteEvent")
 inventoryEvent.Name = "InventoryEvent"
 inventoryEvent.Parent = ReplicatedStorage
 
+local equipEvent = Instance.new("RemoteEvent")
+equipEvent.Name = "EquipEvent"
+equipEvent.Parent = ReplicatedStorage
+
 local initialInventory = HttpService:JSONEncode({
 	Hotbar = {GameData.Items["Smith & Wesson .38"].Name, "", "", "", ""},
 	Stored = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}
@@ -328,6 +332,62 @@ inventoryEvent.OnServerEvent:Connect(function(player, invData)
 				local invVal = playerFolder:FindFirstChild("InventoryData")
 				if invVal then
 					invVal.Value = invData
+				end
+			end
+		end
+	end
+end)
+
+equipEvent.OnServerEvent:Connect(function(player, itemName)
+	local character = player.Character
+	if not character then return end
+
+	local oldEquip = character:FindFirstChild("EquippedItem")
+	if oldEquip then
+		oldEquip:Destroy()
+	end
+
+	if type(itemName) ~= "string" or itemName == "" then return end
+
+	local itemData = GameData.Items[itemName]
+	if itemData and itemData.Model and itemData.Model ~= "" then
+		local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
+		if itemsFolder then
+			local modelTemplate = itemsFolder:FindFirstChild(itemData.Model)
+			if modelTemplate then
+				local newModel = modelTemplate:Clone()
+				newModel.Name = "EquippedItem"
+
+				local rightArm = character:FindFirstChild("Right Arm")
+				local primaryPart = newModel.PrimaryPart or newModel:FindFirstChildWhichIsA("BasePart")
+
+				if rightArm and primaryPart then
+					newModel.Parent = character
+
+					for _, desc in ipairs(newModel:GetDescendants()) do
+						if desc:IsA("BasePart") and desc ~= primaryPart then
+							desc.Anchored = false
+							local internalWeld = Instance.new("WeldConstraint")
+							internalWeld.Part0 = primaryPart
+							internalWeld.Part1 = desc
+							internalWeld.Parent = desc
+						end
+					end
+					primaryPart.Anchored = false
+
+					local equipWeld = Instance.new("Weld")
+					equipWeld.Name = "EquipWeld"
+					equipWeld.Part0 = rightArm
+					equipWeld.Part1 = primaryPart
+
+					equipWeld.C0 = CFrame.new(0, -1, 0)
+
+					local grip = primaryPart:FindFirstChild("Grip")
+					if grip and grip:IsA("Attachment") then
+						equipWeld.C1 = grip.CFrame
+					end
+
+					equipWeld.Parent = primaryPart
 				end
 			end
 		end
