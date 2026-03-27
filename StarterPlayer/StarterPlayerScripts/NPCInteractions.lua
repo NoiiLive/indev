@@ -1,4 +1,5 @@
 -- @ScriptType: LocalScript
+-- @ScriptType: LocalScript
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -40,7 +41,7 @@ dialogueGui.Parent = playerGui
 
 local dialogueFrame = Instance.new("Frame")
 dialogueFrame.Size = UDim2.new(0, 450, 0, 180)
-dialogueFrame.Position = UDim2.new(0.5, -225, 1, -220)
+dialogueFrame.Position = UDim2.new(0.5, -225, 1, -280)
 dialogueFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 dialogueFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
 dialogueFrame.BorderSizePixel = 1
@@ -169,7 +170,7 @@ promptGui.Parent = playerGui
 
 local promptFrame = Instance.new("Frame")
 promptFrame.Size = UDim2.new(0, 160, 0, 35)
-promptFrame.Position = UDim2.new(0.5, -80, 1, -100)
+promptFrame.Position = UDim2.new(0.5, -80, 1, -130)
 promptFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 promptFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
 promptFrame.BorderSizePixel = 1
