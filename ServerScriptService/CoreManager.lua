@@ -4,6 +4,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local Debris = game:GetService("Debris")
 
 local GameData = require(ReplicatedStorage:WaitForChild("GameData"))
 
@@ -32,6 +33,10 @@ inventoryEvent.Parent = ReplicatedStorage
 local equipEvent = Instance.new("RemoteEvent")
 equipEvent.Name = "EquipEvent"
 equipEvent.Parent = ReplicatedStorage
+
+local weaponActionEvent = Instance.new("RemoteEvent")
+weaponActionEvent.Name = "WeaponActionEvent"
+weaponActionEvent.Parent = ReplicatedStorage
 
 local initialInventory = HttpService:JSONEncode({
 	Hotbar = {GameData.Items["Smith & Wesson .38"].Name, "", "", "", ""},
@@ -150,7 +155,9 @@ local function generateRandomData(gender, faction, spawnName, skinColorIndex)
 		HairR = math.random(0, 255),
 		HairG = math.random(0, 255),
 		HairB = math.random(0, 255),
-		InventoryData = initialInventory
+		InventoryData = initialInventory,
+		ClipAmmo = 6,
+		ReserveAmmo = 40
 	}
 end
 
@@ -388,6 +395,63 @@ equipEvent.OnServerEvent:Connect(function(player, itemName)
 					end
 
 					equipWeld.Parent = primaryPart
+				end
+			end
+		end
+	end
+end)
+
+weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName)
+	local data = sessionData[player.UserId]
+	local playerFolder = player:FindFirstChild("AvatarData")
+	if not data or not playerFolder then return end
+
+	local itemData = GameData.Items[weaponName]
+	if not itemData then return end
+
+	local character = player.Character
+	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+
+	local function play3DSound(soundName)
+		if not rootPart then return end
+		local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+		if soundsFolder then
+			local s = soundsFolder:FindFirstChild(soundName)
+			if s and s:IsA("Sound") then
+				local sClone = s:Clone()
+				sClone.Parent = rootPart
+				sClone:Play()
+				Debris:AddItem(sClone, sClone.TimeLength > 0 and sClone.TimeLength + 0.5 or 2)
+			end
+		end
+	end
+
+	if action == "Empty" then
+		play3DSound("fire_empty")
+	elseif action == "Fire" then
+		if itemData.MaxClip then
+			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
+			if clipVal and clipVal.Value > 0 then
+				clipVal.Value = clipVal.Value - 1
+				data.ClipAmmo = clipVal.Value
+				if itemData.UseSound then play3DSound(itemData.UseSound) end
+			end
+		else
+			if itemData.UseSound then play3DSound(itemData.UseSound) end
+		end
+	elseif action == "Reload" then
+		if itemData.MaxClip then
+			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
+			local reserveVal = playerFolder:FindFirstChild("ReserveAmmo")
+			if clipVal and reserveVal then
+				local needed = itemData.MaxClip - clipVal.Value
+				if needed > 0 and reserveVal.Value > 0 then
+					local taken = math.min(needed, reserveVal.Value)
+					clipVal.Value = clipVal.Value + taken
+					reserveVal.Value = reserveVal.Value - taken
+					data.ClipAmmo = clipVal.Value
+					data.ReserveAmmo = reserveVal.Value
+					if itemData.ReloadSound then play3DSound(itemData.ReloadSound) end
 				end
 			end
 		end
