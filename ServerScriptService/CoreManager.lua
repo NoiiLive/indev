@@ -3,6 +3,9 @@ local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local GameData = require(ReplicatedStorage:WaitForChild("GameData"))
 
 local AvatarDataStore = DataStoreService:GetDataStore("AvatarDataStore")
 
@@ -21,6 +24,15 @@ rerollEvent.Parent = ReplicatedStorage
 local barberEvent = Instance.new("RemoteEvent")
 barberEvent.Name = "BarberEvent"
 barberEvent.Parent = ReplicatedStorage
+
+local inventoryEvent = Instance.new("RemoteEvent")
+inventoryEvent.Name = "InventoryEvent"
+inventoryEvent.Parent = ReplicatedStorage
+
+local initialInventory = HttpService:JSONEncode({
+	Hotbar = {GameData.Items["Smith & Wesson .38"].Name, "", "", "", ""},
+	Stored = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}
+})
 
 local Pools = {
 	Masc = {
@@ -133,7 +145,8 @@ local function generateRandomData(gender, faction, spawnName, skinColorIndex)
 		SkinColorIndex = skinColorIndex or math.random(1, #SkinColors),
 		HairR = math.random(0, 255),
 		HairG = math.random(0, 255),
-		HairB = math.random(0, 255)
+		HairB = math.random(0, 255),
+		InventoryData = initialInventory
 	}
 end
 
@@ -302,6 +315,22 @@ barberEvent.OnServerEvent:Connect(function(player, action, payload)
 
 	if player.Character then
 		applyAvatar(player.Character, data)
+	end
+end)
+
+inventoryEvent.OnServerEvent:Connect(function(player, invData)
+	if type(invData) == "string" then
+		local data = sessionData[player.UserId]
+		if data then
+			data.InventoryData = invData
+			local playerFolder = player:FindFirstChild("AvatarData")
+			if playerFolder then
+				local invVal = playerFolder:FindFirstChild("InventoryData")
+				if invVal then
+					invVal.Value = invData
+				end
+			end
+		end
 	end
 end)
 
