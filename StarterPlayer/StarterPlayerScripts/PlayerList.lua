@@ -15,7 +15,7 @@ local listGui = Instance.new("ScreenGui")
 listGui.Name = "CustomLeaderboard"
 listGui.ResetOnSpawn = false
 listGui.Enabled = true
-listGui.IgnoreGuiInset = true -- Now ignores the top bar inset
+listGui.IgnoreGuiInset = true
 listGui.Parent = playerGui
 
 local scrollFrame = Instance.new("ScrollingFrame")
