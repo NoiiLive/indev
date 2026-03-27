@@ -38,6 +38,10 @@ local weaponActionEvent = Instance.new("RemoteEvent")
 weaponActionEvent.Name = "WeaponActionEvent"
 weaponActionEvent.Parent = ReplicatedStorage
 
+local damageIndicatorEvent = Instance.new("RemoteEvent")
+damageIndicatorEvent.Name = "DamageIndicatorEvent"
+damageIndicatorEvent.Parent = ReplicatedStorage
+
 local initialInventory = HttpService:JSONEncode({
 	Hotbar = {GameData.Items["Smith & Wesson .38"].Name, "", "", "", ""},
 	Stored = {"", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""}
@@ -223,11 +227,13 @@ end
 
 local function createHitbox(character)
 	local rootPart = character:WaitForChild("HumanoidRootPart", 5)
-	if not rootPart then return end
+	local head = character:WaitForChild("Head", 5)
+	if not rootPart or not head then return end
 
+	-- Body Hitbox (Wider)
 	local hitbox = Instance.new("Part")
 	hitbox.Name = "Hitbox"
-	hitbox.Size = Vector3.new(2.5, 5, 2.5)
+	hitbox.Size = Vector3.new(4, 5, 2.5) -- Widened X axis for arms
 	hitbox.BrickColor = BrickColor.new("Really red")
 	hitbox.Material = Enum.Material.Neon
 	hitbox.Transparency = 0.8
@@ -240,6 +246,23 @@ local function createHitbox(character)
 	weld.Part0 = rootPart
 	weld.Part1 = hitbox
 	weld.Parent = hitbox
+
+	-- Headshot Hitbox
+	local headHitbox = Instance.new("Part")
+	headHitbox.Name = "HeadHitbox"
+	headHitbox.Size = Vector3.new(1.5, 1.5, 1.5)
+	headHitbox.BrickColor = BrickColor.new("New Yeller")
+	headHitbox.Material = Enum.Material.Neon
+	headHitbox.Transparency = 0.8
+	headHitbox.CanCollide = false
+	headHitbox.Massless = true
+	headHitbox.CFrame = head.CFrame
+	headHitbox.Parent = character
+
+	local headWeld = Instance.new("WeldConstraint")
+	headWeld.Part0 = head
+	headWeld.Part1 = headHitbox
+	headWeld.Parent = headHitbox
 end
 
 local function teleportToSpawn(character, factionName, spawnName)
@@ -478,18 +501,17 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		trail.MinLength = 0
 		trail.Parent = bullet
 
-		local lvAtt = Instance.new("Attachment", bullet)
-		local lv = Instance.new("LinearVelocity")
-		lv.Attachment0 = lvAtt
-		lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
-		lv.VectorVelocity = direction * bulletSpeed
-		lv.MaxForce = math.huge
-		lv.Parent = bullet
+		-- Use BodyVelocity for smooth immediate movement
+		local bv = Instance.new("BodyVelocity")
+		bv.Velocity = direction * bulletSpeed
+		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+		bv.Parent = bullet
 
 		bullet.Parent = workspace
 
-		-- Setting network owner to nil forces immediate server physics simulation (fixes the pause)
+		-- Pre-set velocity and force immediate ownership to avoid stutter
 		bullet:SetNetworkOwner(nil)
+		bullet.Velocity = direction * bulletSpeed
 		bullet.AssemblyLinearVelocity = direction * bulletSpeed
 
 		Debris:AddItem(bullet, 3)
@@ -498,15 +520,22 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		hitConnection = bullet.Touched:Connect(function(hit)
 			if hit:IsDescendantOf(character) then return end
 
-			-- Only apply damage if we hit a hitbox, but still destroy bullet on walls
-			if hit.Name == "Hitbox" then
+			local isBody = (hit.Name == "Hitbox")
+			local isHead = (hit.Name == "HeadHitbox")
+
+			if isBody or isHead then
 				local hitChar = hit.Parent
 				local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
 				if humanoid and humanoid.Health > 0 then
-					humanoid:TakeDamage(itemData.Damage or 25)
+					local dmg = itemData.Damage or 25
+					if isHead then dmg = dmg * 1.5 end
+					humanoid:TakeDamage(dmg)
+
+					-- Tell the client to show the damage popup
+					damageIndicatorEvent:FireClient(player, dmg, hit.Position, isHead)
 				end
 			elseif not hit.CanCollide then
-				return -- Ignore invisible/non-collidable parts that aren't the hitbox
+				return 
 			end
 
 			if hitConnection then hitConnection:Disconnect() end
