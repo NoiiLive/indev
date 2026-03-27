@@ -230,10 +230,9 @@ local function createHitbox(character)
 	local head = character:WaitForChild("Head", 5)
 	if not rootPart or not head then return end
 
-	-- Body Hitbox (Shorter, pushed down to stop at shoulders)
 	local hitbox = Instance.new("Part")
 	hitbox.Name = "Hitbox"
-	hitbox.Size = Vector3.new(4, 4, 2.5) 
+	hitbox.Size = Vector3.new(4, 4.5, 2.5) 
 	hitbox.BrickColor = BrickColor.new("Really red")
 	hitbox.Material = Enum.Material.Neon
 	hitbox.Transparency = 0.8
@@ -247,7 +246,6 @@ local function createHitbox(character)
 	weld.Part1 = hitbox
 	weld.Parent = hitbox
 
-	-- Headshot Hitbox (Expanded to 2x2x2)
 	local headHitbox = Instance.new("Part")
 	headHitbox.Name = "HeadHitbox"
 	headHitbox.Size = Vector3.new(2, 2, 2)
@@ -481,37 +479,47 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 
 		local bullet = Instance.new("Part")
 		bullet.Name = "Bullet"
-		bullet.Size = Vector3.new(0.1, 0.1, 1)
-		bullet.BrickColor = BrickColor.new("New Yeller")
-		bullet.Material = Enum.Material.Neon
+		bullet.Size = Vector3.new(0.5, 0.5, 1.5)
+		bullet.Transparency = 1
 		bullet.CanCollide = false
 		bullet.Massless = true
-		bullet.CFrame = CFrame.lookAt(startPos + direction * 2, startPos + direction * 3)
+		bullet.CFrame = CFrame.lookAt(startPos + direction * 4, startPos + direction * 5)
 
-		local att0 = Instance.new("Attachment", bullet)
-		att0.Position = Vector3.new(0, 0, -bullet.Size.Z / 2)
-		local att1 = Instance.new("Attachment", bullet)
-		att1.Position = Vector3.new(0, 0, bullet.Size.Z / 2)
+		local visual = Instance.new("Part")
+		visual.Name = "VisualBullet"
+		visual.Size = Vector3.new(0.1, 0.1, 1.2)
+		visual.BrickColor = BrickColor.new("New Yeller")
+		visual.Material = Enum.Material.Neon
+		visual.CanCollide = false
+		visual.Massless = true
+		visual.CFrame = bullet.CFrame
+		visual.Parent = bullet
+
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = bullet
+		weld.Part1 = visual
+		weld.Parent = visual
+
+		local att0 = Instance.new("Attachment", visual)
+		att0.Position = Vector3.new(0, 0, -visual.Size.Z / 2)
+		local att1 = Instance.new("Attachment", visual)
+		att1.Position = Vector3.new(0, 0, visual.Size.Z / 2)
 
 		local trail = Instance.new("Trail")
 		trail.Attachment0 = att0
 		trail.Attachment1 = att1
 		trail.Color = ColorSequence.new(Color3.new(1, 0.8, 0))
-		trail.Lifetime = 0.1
+		trail.Lifetime = 0.15
 		trail.MinLength = 0
-		trail.Parent = bullet
+		trail.Parent = visual
 
-		-- Use LinearVelocity for immediate, lag-free physics calculation
-		local lvAtt = Instance.new("Attachment", bullet)
-		local lv = Instance.new("LinearVelocity")
-		lv.Attachment0 = lvAtt
-		lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
-		lv.VectorVelocity = direction * bulletSpeed
-		lv.MaxForce = math.huge
-		lv.RelativeTo = Enum.ActuatorRelativeTo.World
-		lv.Parent = bullet
+		local bv = Instance.new("BodyVelocity")
+		bv.Velocity = direction * bulletSpeed
+		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+		bv.Parent = bullet
 
 		bullet.Parent = workspace
+
 		bullet:SetNetworkOwner(nil)
 
 		Debris:AddItem(bullet, 3)
@@ -519,22 +527,30 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		local hitConnection
 		hitConnection = bullet.Touched:Connect(function(hit)
 			if hit:IsDescendantOf(character) then return end
+			if hit.Name == "VisualBullet" then return end
 
-			local isBody = (hit.Name == "Hitbox")
-			local isHead = (hit.Name == "HeadHitbox")
+			local hitChar = hit.Parent
+			local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
 
-			if isBody or isHead then
-				local hitChar = hit.Parent
-				local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
-				if humanoid and humanoid.Health > 0 then
-					local dmg = itemData.Damage or 25
-					if isHead then dmg = dmg * 1.5 end
-					humanoid:TakeDamage(dmg)
+			if not humanoid and hitChar.Parent:IsA("Model") then
+				hitChar = hitChar.Parent
+				humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+			end
 
-					-- Triggers the DamageIndicators.lua LocalScript!
-					damageIndicatorEvent:FireClient(player, dmg, hit.Position, isHead)
-				end
-			elseif not hit.CanCollide then
+			if humanoid and humanoid.Health > 0 then
+				local isHead = (hit.Name == "Head" or hit.Name == "HeadHitbox")
+				local dmg = itemData.Damage or 25
+				if isHead then dmg = dmg * 1.5 end
+				humanoid:TakeDamage(dmg)
+
+				damageIndicatorEvent:FireClient(player, dmg, hit.Position, isHead)
+
+				if hitConnection then hitConnection:Disconnect() end
+				bullet:Destroy()
+				return
+			end
+
+			if not hit.CanCollide then
 				return 
 			end
 
