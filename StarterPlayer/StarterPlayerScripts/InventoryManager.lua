@@ -1,5 +1,4 @@
 -- @ScriptType: LocalScript
--- @ScriptType: LocalScript
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
@@ -122,7 +121,103 @@ local moveConnection = nil
 local lastFireTime = 0
 local isReloading = false
 
--- Added ignoreCharacter parameter
+local function getCharacterIgnoreList(extraObjects)
+	local list = {}
+	if extraObjects then
+		for _, obj in ipairs(extraObjects) do
+			if obj then table.insert(list, obj) end
+		end
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then table.insert(list, p.Character) end
+	end
+	return list
+end
+
+local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ignoreCharacter)
+	local numParticles = math.random(3, 5)
+
+	for i = 1, numParticles do
+		local p = Instance.new("Part")
+
+		if isBlood then
+			p.Size = Vector3.new(0.2, 0.2, 0.2) 
+			p.Color = Color3.fromRGB(170, 0, 0)
+			p.Material = Enum.Material.Plastic 
+		else
+			p.Size = Vector3.new(0.4, 0.4, 0.4)
+			p.Color = hitPart.Color
+			p.Material = hitPart.Material
+		end
+
+		p.CanCollide = false
+		p.Massless = true
+		p.Position = position
+
+		local att0 = Instance.new("Attachment", p)
+		att0.Position = Vector3.new(0, 0.075, 0)
+		local att1 = Instance.new("Attachment", p)
+		att1.Position = Vector3.new(0, -0.075, 0)
+
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = att0
+		trail.Attachment1 = att1
+		trail.Color = ColorSequence.new(p.Color)
+		trail.Lifetime = 0.15
+		trail.WidthScale = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(1, 0)
+		})
+		trail.Parent = p
+
+		p.Parent = workspace
+
+		local scatterDir = (-bulletDirection + Vector3.new(math.random(-15, 15)/10, math.random(5, 20)/10, math.random(-15, 15)/10)).Unit
+		local scatterSpeed = math.random(15, 35)
+
+		p.AssemblyLinearVelocity = scatterDir * scatterSpeed
+		p.AssemblyAngularVelocity = Vector3.new(math.random(-30, 30), math.random(-30, 30), math.random(-30, 30))
+
+		if isBlood then
+			local hitConn
+			hitConn = p.Touched:Connect(function(hitObj)
+				local hitName = string.lower(hitObj.Name)
+				if hitName == "hitbox" or hitName == "headhitbox" or hitName == "visualbullet" or hitName == "bullet" or hitName == "fence" or hitName == "water" then return end
+
+				if hitObj.Parent and hitObj.Parent:FindFirstChildOfClass("Humanoid") then return end
+				if not hitObj.CanCollide then return end
+
+				if hitConn then hitConn:Disconnect() end
+
+				local rayParams = RaycastParams.new()
+				rayParams.FilterDescendantsInstances = getCharacterIgnoreList({p, ignoreCharacter})
+				rayParams.FilterType = Enum.RaycastFilterType.Exclude
+				rayParams.RespectCanCollide = true 
+
+				local moveDir = p.AssemblyLinearVelocity.Magnitude > 0.1 and p.AssemblyLinearVelocity.Unit or Vector3.new(0, -1, 0)
+				local ray = workspace:Raycast(p.Position - moveDir, moveDir * 3, rayParams)
+
+				if ray and ray.Normal.Y > 0.7 then
+					local puddle = Instance.new("Part")
+					puddle.Size = Vector3.new(math.random(10, 15)/10, math.random(10, 15)/10, 0.02)
+					puddle.Color = Color3.fromRGB(170, 0, 0)
+					puddle.Material = Enum.Material.Plastic 
+					puddle.Anchored = true
+					puddle.CanCollide = false
+					puddle.Massless = true
+					puddle.CFrame = CFrame.lookAt(ray.Position + ray.Normal * 0.01, ray.Position + ray.Normal) * CFrame.Angles(0, 0, math.random() * math.pi * 2)
+					puddle.Parent = workspace
+					Debris:AddItem(puddle, 15)
+				end
+
+				p:Destroy()
+			end)
+		end
+
+		Debris:AddItem(p, isBlood and 5 or math.random(8, 15)/10)
+	end
+end
+
 local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 	local visual = Instance.new("Part")
 	visual.Name = "VisualBullet"
@@ -165,14 +260,24 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 	visual.Parent = workspace
 	Debris:AddItem(visual, 3)
 
-	-- Mirrors the server's collision logic locally to instantly destroy the visual
 	local hitConnection
 	hitConnection = visual.Touched:Connect(function(hit)
 		if ignoreCharacter and hit:IsDescendantOf(ignoreCharacter) then return end
 		if hit.Name == "VisualBullet" or hit.Name == "Bullet" or hit.Name == "BulletHitbox" then return end
-		if string.lower(hit.Name) == "fence" then return end
 
-		if hit.Name == "Hitbox" or hit.Name == "HeadHitbox" then
+		local hitName = string.lower(hit.Name)
+		if hitName == "fence" or hitName == "water" then return end
+
+		local hitChar = hit.Parent
+		local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+
+		if not humanoid and hitChar.Parent:IsA("Model") then
+			hitChar = hitChar.Parent
+			humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+		end
+
+		if humanoid then
+			spawnHitParticles(visual.Position, direction, hit, true, ignoreCharacter)
 			if hitConnection then hitConnection:Disconnect() end
 			visual:Destroy()
 			return
@@ -180,12 +285,32 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 
 		if not hit.CanCollide then return end
 
+		local rayParams = RaycastParams.new()
+		rayParams.FilterDescendantsInstances = getCharacterIgnoreList({visual, ignoreCharacter})
+		rayParams.FilterType = Enum.RaycastFilterType.Exclude
+		rayParams.RespectCanCollide = true 
+
+		local ray = workspace:Raycast(visual.Position - (direction * 4), direction * 8, rayParams)
+
+		if ray then
+			local hole = Instance.new("Part")
+			hole.Size = Vector3.new(0.25, 0.25, 0.02)
+			hole.Color = Color3.new(0, 0, 0)
+			hole.Material = Enum.Material.Neon
+			hole.Anchored = true
+			hole.CanCollide = false
+			hole.Massless = true
+			hole.CFrame = CFrame.lookAt(ray.Position + ray.Normal * 0.01, ray.Position + ray.Normal) * CFrame.Angles(0, 0, math.random() * math.pi * 2)
+			hole.Parent = workspace
+			Debris:AddItem(hole, 15)
+		end
+
+		spawnHitParticles(visual.Position, direction, hit, false, ignoreCharacter)
 		if hitConnection then hitConnection:Disconnect() end
 		visual:Destroy()
 	end)
 end
 
--- Receives the shooter's character from the server
 renderBulletEvent.OnClientEvent:Connect(function(startPos, direction, speed, ignoreCharacter)
 	renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 end)
@@ -590,7 +715,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 							else
 								if startPos then
 									local direction = (mousePos - startPos).Unit
-									-- Pass local player's character to ignore
 									renderVisualBullet(startPos, direction, itemData.BulletSpeed or 500, player.Character)
 								end
 								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
