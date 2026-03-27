@@ -1,5 +1,4 @@
 -- @ScriptType: Script
--- @ScriptType: Script
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
@@ -41,8 +40,20 @@ local Pools = {
 			95174346454397, 88539590756497, 139707451231957, 124120228964435, 85073098049802, 
 			4773873546, 85552002879927, 73058918882985, 92206421183250, 101006327430632
 		},
-		ShirtIDs = {15117817846},
-		PantsIDs = {15117817167},
+		Factions = {
+			STREETS = {
+				ShirtIDs = {6475610218, 11373066002, 6475609454, 6745531820, 10516913453, 2454118359, 113836598447031, 6140709264},
+				PantsIDs = {8639706123, 106503910916588, 6363314073, 2231211984}
+			},
+			MAFIA = {
+				ShirtIDs = {6430373850, 87318354793884, 6430378289, 6430388466, 17705703606, 82768729660708},
+				PantsIDs = {18845411653}
+			},
+			POLICE = {
+				ShirtIDs = {14864023926, 124432271572433},
+				PantsIDs = {104449794109636}
+			}
+		},
 		FaceIDs = {0}
 	},
 	Fem = {
@@ -62,8 +73,20 @@ local Pools = {
 			11417078736, 102439036876876, 16138295463, 17235366475, 16138301962, 74442396896368,
 			104164430679537, 131060997095972, 15069719768, 129458465295140, 17832723362, 138964634412256
 		},
-		ShirtIDs = {15117648099},
-		PantsIDs = {15117656161},
+		Factions = {
+			STREETS = {
+				ShirtIDs = {6475610218, 72887864504813, 12333099286, 2454118359, 16204229076},
+				PantsIDs = {7976640793, 6363314073, 8639706123}
+			},
+			MAFIA = {
+				ShirtIDs = {6430373850, 87318354793884, 6430378289},
+				PantsIDs = {18845411653}
+			},
+			POLICE = {
+				ShirtIDs = {14864023926, 124432271572433},
+				PantsIDs = {104449794109636}
+			}
+		},
 		FaceIDs = {0}
 	}
 }
@@ -92,16 +115,20 @@ local SkinColors = {
 
 local sessionData = {}
 
-local function generateRandomData(gender, spawnName, skinColorIndex)
+local function generateRandomData(gender, faction, spawnName, skinColorIndex)
 	local pool = Pools[gender] or Pools.Masc
+	local fac = faction or "STREETS"
+	local factionPool = pool.Factions[fac] or pool.Factions.STREETS
+
 	return {
 		Gender = gender,
+		Faction = fac,
 		SpawnName = spawnName,
 		FirstName = pool.FirstNames[math.random(1, #pool.FirstNames)],
 		LastName = LastNames[math.random(1, #LastNames)],
 		Hair = tostring(pool.HairIDs[math.random(1, #pool.HairIDs)]),
-		Shirt = pool.ShirtIDs[math.random(1, #pool.ShirtIDs)],
-		Pants = pool.PantsIDs[math.random(1, #pool.PantsIDs)],
+		Shirt = factionPool.ShirtIDs[math.random(1, #factionPool.ShirtIDs)],
+		Pants = factionPool.PantsIDs[math.random(1, #factionPool.PantsIDs)],
 		Face = pool.FaceIDs[math.random(1, #pool.FaceIDs)],
 		SkinColorIndex = skinColorIndex or math.random(1, #SkinColors),
 		HairR = math.random(0, 255),
@@ -111,7 +138,7 @@ local function generateRandomData(gender, spawnName, skinColorIndex)
 end
 
 local function reconcileData(savedData)
-	local freshData = generateRandomData(savedData.Gender or "Masc", savedData.SpawnName or "Spawn1", savedData.SkinColorIndex)
+	local freshData = generateRandomData(savedData.Gender or "Masc", savedData.Faction or "STREETS", savedData.SpawnName or "Spawn1", savedData.SkinColorIndex)
 	for key, value in pairs(freshData) do
 		if savedData[key] == nil then
 			savedData[key] = value
@@ -170,27 +197,30 @@ local function applyAvatar(character, data)
 	end
 end
 
-local function teleportToSpawn(character, spawnName)
+local function teleportToSpawn(character, factionName, spawnName)
 	local spawnsFolder = workspace:FindFirstChild("Spawns")
 	if spawnsFolder then
-		local targetSpawn = spawnsFolder:FindFirstChild(spawnName)
-		if targetSpawn and targetSpawn:IsA("BasePart") and character:FindFirstChild("HumanoidRootPart") then
-			character.HumanoidRootPart.CFrame = targetSpawn.CFrame + Vector3.new(0, 5, 0)
+		local factionFolder = spawnsFolder:FindFirstChild(factionName)
+		if factionFolder then
+			local targetSpawn = factionFolder:FindFirstChild(spawnName)
+			if targetSpawn and targetSpawn:IsA("BasePart") and character:FindFirstChild("HumanoidRootPart") then
+				character.HumanoidRootPart.CFrame = targetSpawn.CFrame + Vector3.new(0, 5, 0)
+			end
 		end
 	end
 end
 
 spawnEvent.OnServerEvent:Connect(function(player)
 	local data = sessionData[player.UserId]
-	if data and data.SpawnName and player.Character then
-		teleportToSpawn(player.Character, data.SpawnName)
+	if data and data.Faction and data.SpawnName and player.Character then
+		teleportToSpawn(player.Character, data.Faction, data.SpawnName)
 	end
 end)
 
-submitEvent.OnServerEvent:Connect(function(player, gender, spawnName, skinColorIndex)
-	if type(gender) ~= "string" or type(spawnName) ~= "string" or type(skinColorIndex) ~= "number" then return end
+submitEvent.OnServerEvent:Connect(function(player, gender, faction, spawnName, skinColorIndex)
+	if type(gender) ~= "string" or type(faction) ~= "string" or type(spawnName) ~= "string" or type(skinColorIndex) ~= "number" then return end
 
-	local newData = generateRandomData(gender, spawnName, skinColorIndex)
+	local newData = generateRandomData(gender, faction, spawnName, skinColorIndex)
 	sessionData[player.UserId] = newData
 
 	local playerFolder = player:FindFirstChild("AvatarData")
@@ -211,7 +241,7 @@ submitEvent.OnServerEvent:Connect(function(player, gender, spawnName, skinColorI
 
 	if player.Character then
 		applyAvatar(player.Character, newData)
-		teleportToSpawn(player.Character, spawnName)
+		teleportToSpawn(player.Character, faction, spawnName)
 	end
 end)
 
@@ -219,7 +249,7 @@ rerollEvent.OnServerEvent:Connect(function(player)
 	if not RunService:IsStudio() then return end
 	local oldData = sessionData[player.UserId]
 	if not oldData then return end
-	local newData = generateRandomData(oldData.Gender, oldData.SpawnName, oldData.SkinColorIndex)
+	local newData = generateRandomData(oldData.Gender, oldData.Faction, oldData.SpawnName, oldData.SkinColorIndex)
 	sessionData[player.UserId] = newData
 	local playerFolder = player:FindFirstChild("AvatarData")
 	if playerFolder then
