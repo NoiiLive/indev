@@ -500,7 +500,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 					end
 
 					if canUse then
-						local mousePos = player:GetMouse().Hit.Position
+						local mouse = player:GetMouse()
+						mouse.TargetFilter = player.Character
+						local mousePos = mouse.Hit.Position
+
 						if itemData.MaxClip then
 							local avatarData = player:FindFirstChild("AvatarData")
 							local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
