@@ -8,6 +8,7 @@ local spawnEvent = ReplicatedStorage:WaitForChild("RequestSpawn")
 local submitEvent = ReplicatedStorage:WaitForChild("SubmitCharacter")
 
 local selectedGender = nil
+local selectedFaction = nil
 local selectedSpawn = nil
 local selectedSkinIndex = nil
 
@@ -100,20 +101,6 @@ femButton.BorderSizePixel = 1
 femButton.ZIndex = 4
 femButton.Parent = genderContainer
 
-local spawnContainer = Instance.new("Frame")
-spawnContainer.Size = UDim2.new(0, 300, 0, 400)
-spawnContainer.Position = UDim2.new(0.5, -150, 0.45, 0)
-spawnContainer.BackgroundTransparency = 1
-spawnContainer.Visible = false
-spawnContainer.ZIndex = 3
-spawnContainer.Parent = creationFrame
-
-local spawnLayout = Instance.new("UIListLayout")
-spawnLayout.FillDirection = Enum.FillDirection.Vertical
-spawnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-spawnLayout.Padding = UDim.new(0, 15)
-spawnLayout.Parent = spawnContainer
-
 local skinContainer = Instance.new("Frame")
 skinContainer.Size = UDim2.new(0, 500, 0, 100)
 skinContainer.Position = UDim2.new(0.5, -250, 0.45, 0)
@@ -129,23 +116,34 @@ skinLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 skinLayout.Padding = UDim.new(0, 20)
 skinLayout.Parent = skinContainer
 
-for index, color in ipairs(SkinColors) do
-	local skinBtn = Instance.new("TextButton")
-	skinBtn.Size = UDim2.new(0, 60, 0, 60)
-	skinBtn.Text = ""
-	skinBtn.BackgroundColor3 = color
-	skinBtn.BorderColor3 = Color3.fromRGB(80, 80, 80)
-	skinBtn.BorderSizePixel = 1
-	skinBtn.ZIndex = 4
-	skinBtn.Parent = skinContainer
+local factionContainer = Instance.new("Frame")
+factionContainer.Size = UDim2.new(0, 600, 0, 100)
+factionContainer.Position = UDim2.new(0.5, -300, 0.45, 0)
+factionContainer.BackgroundTransparency = 1
+factionContainer.Visible = false
+factionContainer.ZIndex = 3
+factionContainer.Parent = creationFrame
 
-	skinBtn.MouseButton1Click:Connect(function()
-		selectedSkinIndex = index
-		skinContainer.Visible = false
-		titleText.Text = "WHERE WILL YOU BEGIN?"
-		spawnContainer.Visible = true
-	end)
-end
+local factionLayout = Instance.new("UIListLayout")
+factionLayout.FillDirection = Enum.FillDirection.Horizontal
+factionLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+factionLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+factionLayout.Padding = UDim.new(0, 30)
+factionLayout.Parent = factionContainer
+
+local spawnContainer = Instance.new("Frame")
+spawnContainer.Size = UDim2.new(0, 300, 0, 400)
+spawnContainer.Position = UDim2.new(0.5, -150, 0.45, 0)
+spawnContainer.BackgroundTransparency = 1
+spawnContainer.Visible = false
+spawnContainer.ZIndex = 3
+spawnContainer.Parent = creationFrame
+
+local spawnLayout = Instance.new("UIListLayout")
+spawnLayout.FillDirection = Enum.FillDirection.Vertical
+spawnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+spawnLayout.Padding = UDim.new(0, 15)
+spawnLayout.Parent = spawnContainer
 
 local loadingFrame = Instance.new("Frame")
 loadingFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -192,7 +190,7 @@ local function createSpawnButton(spawnPart)
 			fadeBgIn:Play()
 			fadeBgIn.Completed:Wait()
 
-			submitEvent:FireServer(selectedGender, selectedSpawn, selectedSkinIndex)
+			submitEvent:FireServer(selectedGender, selectedFaction, selectedSpawn, selectedSkinIndex)
 			task.wait(1.5)
 
 			local finalFadeBgOut = TweenService:Create(loadingFrame, TweenInfo.new(1), {BackgroundTransparency = 1})
@@ -206,11 +204,59 @@ local function createSpawnButton(spawnPart)
 	end
 end
 
-for _, child in ipairs(spawnsFolder:GetChildren()) do
-	createSpawnButton(child)
+for index, color in ipairs(SkinColors) do
+	local skinBtn = Instance.new("TextButton")
+	skinBtn.Size = UDim2.new(0, 60, 0, 60)
+	skinBtn.Text = ""
+	skinBtn.BackgroundColor3 = color
+	skinBtn.BorderColor3 = Color3.fromRGB(80, 80, 80)
+	skinBtn.BorderSizePixel = 1
+	skinBtn.ZIndex = 4
+	skinBtn.Parent = skinContainer
+
+	skinBtn.MouseButton1Click:Connect(function()
+		selectedSkinIndex = index
+		skinContainer.Visible = false
+		titleText.Text = "CHOOSE YOUR ALLEGIANCE"
+		factionContainer.Visible = true
+	end)
 end
 
-spawnsFolder.ChildAdded:Connect(createSpawnButton)
+local factions = {"STREETS", "MAFIA", "POLICE"}
+for _, factionName in ipairs(factions) do
+	local facBtn = Instance.new("TextButton")
+	facBtn.Size = UDim2.new(0, 150, 0, 50)
+	facBtn.Text = factionName
+	facBtn.Font = Enum.Font.Bodoni
+	facBtn.TextSize = 22
+	facBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+	facBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	facBtn.BorderColor3 = Color3.fromRGB(80, 80, 80)
+	facBtn.BorderSizePixel = 1
+	facBtn.ZIndex = 4
+	facBtn.Parent = factionContainer
+
+	facBtn.MouseButton1Click:Connect(function()
+		selectedFaction = factionName
+		factionContainer.Visible = false
+		titleText.Text = "WHERE WILL YOU BEGIN?"
+
+		for _, child in ipairs(spawnContainer:GetChildren()) do
+			if child:IsA("TextButton") then
+				child:Destroy()
+			end
+		end
+
+		local factionFolder = spawnsFolder:FindFirstChild(factionName)
+		if factionFolder then
+			for _, spawnPart in ipairs(factionFolder:GetChildren()) do
+				createSpawnButton(spawnPart)
+			end
+		end
+
+		spawnContainer.Visible = true
+	end)
+end
 
 local avatarDataFolder = player:WaitForChild("AvatarData")
 task.wait(1)
