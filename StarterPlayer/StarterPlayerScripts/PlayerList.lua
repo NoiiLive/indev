@@ -1,4 +1,5 @@
 -- @ScriptType: LocalScript
+-- @ScriptType: LocalScript
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
@@ -27,6 +28,13 @@ scrollFrame.BorderSizePixel = 0
 scrollFrame.ScrollBarThickness = 4
 scrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
 scrollFrame.Parent = listGui
+
+-- Added padding to prevent the top/left borders of the entries from getting clipped
+local listPadding = Instance.new("UIPadding")
+listPadding.PaddingTop = UDim.new(0, 2)
+listPadding.PaddingLeft = UDim.new(0, 2)
+listPadding.PaddingBottom = UDim.new(0, 2)
+listPadding.Parent = scrollFrame
 
 local uiScale = Instance.new("UIScale")
 uiScale.Scale = 0
