@@ -149,10 +149,11 @@ local function playHitSound(position, soundName)
 			soundPart.Parent = workspace
 
 			local sClone = s:Clone()
+			sClone.PlaybackSpeed = sClone.PlaybackSpeed * (math.random(85, 115) / 100)
 			sClone.Parent = soundPart
 			sClone:Play()
 
-			Debris:AddItem(soundPart, sClone.TimeLength > 0 and sClone.TimeLength + 0.5 or 2)
+			Debris:AddItem(soundPart, sClone.TimeLength > 0 and (sClone.TimeLength / sClone.PlaybackSpeed) + 0.5 or 2)
 		end
 	end
 end
@@ -245,7 +246,7 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 	local visual = Instance.new("Part")
 	visual.Name = "VisualBullet"
 	visual.Shape = Enum.PartType.Ball
-	visual.Size = Vector3.new(0.2, 0.2, 0.2)
+	visual.Size = Vector3.new(0.5, 0.5, 0.5)
 	visual.BrickColor = BrickColor.new("New Yeller")
 	visual.Material = Enum.Material.Neon
 	visual.CanCollide = false
