@@ -20,7 +20,7 @@ GameData.Items = {
 		UseSound = "fire_default",
 		ReloadSound = "reload_default",
 		Damage = 10,
-		BulletSpeed = 250
+		BulletSpeed = 300
 	}
 }
 
