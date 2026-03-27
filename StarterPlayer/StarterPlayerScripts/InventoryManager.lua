@@ -134,6 +134,29 @@ local function getCharacterIgnoreList(extraObjects)
 	return list
 end
 
+local function playHitSound(position, soundName)
+	local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+	if soundsFolder then
+		local s = soundsFolder:FindFirstChild(soundName)
+		if s and s:IsA("Sound") then
+			local soundPart = Instance.new("Part")
+			soundPart.Name = "HitSoundEmitter"
+			soundPart.Size = Vector3.new(0.1, 0.1, 0.1)
+			soundPart.Transparency = 1
+			soundPart.CanCollide = false
+			soundPart.Anchored = true
+			soundPart.Position = position
+			soundPart.Parent = workspace
+
+			local sClone = s:Clone()
+			sClone.Parent = soundPart
+			sClone:Play()
+
+			Debris:AddItem(soundPart, sClone.TimeLength > 0 and sClone.TimeLength + 0.5 or 2)
+		end
+	end
+end
+
 local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ignoreCharacter)
 	local numParticles = math.random(3, 5)
 
@@ -268,6 +291,26 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 		local hitName = string.lower(hit.Name)
 		if hitName == "fence" or hitName == "water" then return end
 
+		if hitName == "window" and hit.CanCollide then
+			local parent = hit.Parent
+			if parent and parent ~= workspace then
+				for _, child in ipairs(parent:GetChildren()) do
+					if child:IsA("BasePart") and string.lower(child.Name) == "window" and child.CanCollide then
+						child.Transparency = 1
+						child.CanCollide = false
+					end
+				end
+			else
+				hit.Transparency = 1
+				hit.CanCollide = false
+			end
+			playHitSound(visual.Position, "hit_glass")
+			spawnHitParticles(visual.Position, direction, hit, false, ignoreCharacter)
+			if hitConnection then hitConnection:Disconnect() end
+			visual:Destroy()
+			return
+		end
+
 		local hitChar = hit.Parent
 		local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
 
@@ -277,6 +320,7 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 		end
 
 		if humanoid then
+			playHitSound(visual.Position, "hit_person")
 			spawnHitParticles(visual.Position, direction, hit, true, ignoreCharacter)
 			if hitConnection then hitConnection:Disconnect() end
 			visual:Destroy()
@@ -290,7 +334,8 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 		rayParams.FilterType = Enum.RaycastFilterType.Exclude
 		rayParams.RespectCanCollide = true 
 
-		local ray = workspace:Raycast(visual.Position - (direction * 4), direction * 8, rayParams)
+		local dist = (visual.Position - startPos).Magnitude
+		local ray = workspace:Raycast(startPos, direction * (dist + 5), rayParams)
 
 		if ray then
 			local hole = Instance.new("Part")
@@ -305,6 +350,7 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 			Debris:AddItem(hole, 15)
 		end
 
+		playHitSound(visual.Position, "hit_ground")
 		spawnHitParticles(visual.Position, direction, hit, false, ignoreCharacter)
 		if hitConnection then hitConnection:Disconnect() end
 		visual:Destroy()
