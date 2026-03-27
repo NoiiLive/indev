@@ -500,6 +500,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 					end
 
 					if canUse then
+						local mousePos = player:GetMouse().Hit.Position
 						if itemData.MaxClip then
 							local avatarData = player:FindFirstChild("AvatarData")
 							local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
@@ -507,10 +508,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 								canUse = false
 								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Empty", selectedItemName)
 							else
-								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName)
+								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
 							end
 						else
-							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName)
+							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
 						end
 					end
 
