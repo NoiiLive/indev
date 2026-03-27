@@ -221,6 +221,27 @@ local function applyAvatar(character, data)
 	end
 end
 
+local function createHitbox(character)
+	local rootPart = character:WaitForChild("HumanoidRootPart", 5)
+	if not rootPart then return end
+
+	local hitbox = Instance.new("Part")
+	hitbox.Name = "Hitbox"
+	hitbox.Size = Vector3.new(2.5, 5, 2.5)
+	hitbox.BrickColor = BrickColor.new("Really red")
+	hitbox.Material = Enum.Material.Neon
+	hitbox.Transparency = 0.8
+	hitbox.CanCollide = false
+	hitbox.Massless = true
+	hitbox.CFrame = rootPart.CFrame
+	hitbox.Parent = character
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = rootPart
+	weld.Part1 = hitbox
+	weld.Parent = hitbox
+end
+
 local function teleportToSpawn(character, factionName, spawnName)
 	local spawnsFolder = workspace:FindFirstChild("Spawns")
 	if spawnsFolder then
@@ -401,7 +422,7 @@ equipEvent.OnServerEvent:Connect(function(player, itemName)
 	end
 end)
 
-weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName)
+weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, targetPos)
 	local data = sessionData[player.UserId]
 	local playerFolder = player:FindFirstChild("AvatarData")
 	if not data or not playerFolder then return end
@@ -426,6 +447,73 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName)
 		end
 	end
 
+	local function spawnBullet()
+		if typeof(targetPos) ~= "Vector3" then return end
+		local rightArm = character:FindFirstChild("Right Arm")
+		local startPos = rightArm and rightArm.Position or (rootPart and rootPart.Position)
+		if not startPos then return end
+
+		local direction = (targetPos - startPos).Unit
+		local bulletSpeed = itemData.BulletSpeed or 500
+
+		local bullet = Instance.new("Part")
+		bullet.Name = "Bullet"
+		bullet.Size = Vector3.new(0.1, 0.1, 1)
+		bullet.BrickColor = BrickColor.new("New Yeller")
+		bullet.Material = Enum.Material.Neon
+		bullet.CanCollide = false
+		bullet.Massless = true
+		bullet.CFrame = CFrame.lookAt(startPos + direction * 2, startPos + direction * 3)
+
+		local att0 = Instance.new("Attachment", bullet)
+		att0.Position = Vector3.new(0, 0, -bullet.Size.Z / 2)
+		local att1 = Instance.new("Attachment", bullet)
+		att1.Position = Vector3.new(0, 0, bullet.Size.Z / 2)
+
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = att0
+		trail.Attachment1 = att1
+		trail.Color = ColorSequence.new(Color3.new(1, 0.8, 0))
+		trail.Lifetime = 0.1
+		trail.MinLength = 0
+		trail.Parent = bullet
+
+		local lvAtt = Instance.new("Attachment", bullet)
+		local lv = Instance.new("LinearVelocity")
+		lv.Attachment0 = lvAtt
+		lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		lv.VectorVelocity = direction * bulletSpeed
+		lv.MaxForce = math.huge
+		lv.Parent = bullet
+
+		bullet.Parent = workspace
+
+		-- Setting network owner to nil forces immediate server physics simulation (fixes the pause)
+		bullet:SetNetworkOwner(nil)
+		bullet.AssemblyLinearVelocity = direction * bulletSpeed
+
+		Debris:AddItem(bullet, 3)
+
+		local hitConnection
+		hitConnection = bullet.Touched:Connect(function(hit)
+			if hit:IsDescendantOf(character) then return end
+
+			-- Only apply damage if we hit a hitbox, but still destroy bullet on walls
+			if hit.Name == "Hitbox" then
+				local hitChar = hit.Parent
+				local humanoid = hitChar:FindFirstChildOfClass("Humanoid")
+				if humanoid and humanoid.Health > 0 then
+					humanoid:TakeDamage(itemData.Damage or 25)
+				end
+			elseif not hit.CanCollide then
+				return -- Ignore invisible/non-collidable parts that aren't the hitbox
+			end
+
+			if hitConnection then hitConnection:Disconnect() end
+			bullet:Destroy()
+		end)
+	end
+
 	if action == "Empty" then
 		play3DSound("fire_empty")
 	elseif action == "Fire" then
@@ -435,9 +523,11 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName)
 				clipVal.Value = clipVal.Value - 1
 				data.ClipAmmo = clipVal.Value
 				if itemData.UseSound then play3DSound(itemData.UseSound) end
+				spawnBullet()
 			end
 		else
 			if itemData.UseSound then play3DSound(itemData.UseSound) end
+			spawnBullet()
 		end
 	elseif action == "Reload" then
 		if itemData.MaxClip then
@@ -487,6 +577,7 @@ Players.PlayerAdded:Connect(function(player)
 	player.CharacterAppearanceLoaded:Connect(function(character)
 		local data = sessionData[player.UserId]
 		if data and data.Gender then applyAvatar(character, data) end
+		createHitbox(character)
 	end)
 end)
 
