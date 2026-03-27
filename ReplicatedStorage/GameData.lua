@@ -18,8 +18,9 @@ GameData.Items = {
 		FireRate = 0.4,
 		ReloadTime = 1.1,
 		UseSound = "fire_default",
-		ReloadSound = "reload_default"
-		
+		ReloadSound = "reload_default",
+		Damage = 10,
+		BulletSpeed = 250
 	}
 }
 
