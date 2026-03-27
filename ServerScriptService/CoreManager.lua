@@ -230,16 +230,16 @@ local function createHitbox(character)
 	local head = character:WaitForChild("Head", 5)
 	if not rootPart or not head then return end
 
-	-- Body Hitbox (Wider)
+	-- Body Hitbox (Shorter, pushed down to stop at shoulders)
 	local hitbox = Instance.new("Part")
 	hitbox.Name = "Hitbox"
-	hitbox.Size = Vector3.new(4, 5, 2.5) -- Widened X axis for arms
+	hitbox.Size = Vector3.new(4, 4, 2.5) 
 	hitbox.BrickColor = BrickColor.new("Really red")
 	hitbox.Material = Enum.Material.Neon
 	hitbox.Transparency = 0.8
 	hitbox.CanCollide = false
 	hitbox.Massless = true
-	hitbox.CFrame = rootPart.CFrame
+	hitbox.CFrame = rootPart.CFrame * CFrame.new(0, -0.75, 0)
 	hitbox.Parent = character
 
 	local weld = Instance.new("WeldConstraint")
@@ -247,10 +247,10 @@ local function createHitbox(character)
 	weld.Part1 = hitbox
 	weld.Parent = hitbox
 
-	-- Headshot Hitbox
+	-- Headshot Hitbox (Expanded to 2x2x2)
 	local headHitbox = Instance.new("Part")
 	headHitbox.Name = "HeadHitbox"
-	headHitbox.Size = Vector3.new(1.5, 1.5, 1.5)
+	headHitbox.Size = Vector3.new(2, 2, 2)
 	headHitbox.BrickColor = BrickColor.new("New Yeller")
 	headHitbox.Material = Enum.Material.Neon
 	headHitbox.Transparency = 0.8
@@ -501,18 +501,18 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		trail.MinLength = 0
 		trail.Parent = bullet
 
-		-- Use BodyVelocity for smooth immediate movement
-		local bv = Instance.new("BodyVelocity")
-		bv.Velocity = direction * bulletSpeed
-		bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-		bv.Parent = bullet
+		-- Use LinearVelocity for immediate, lag-free physics calculation
+		local lvAtt = Instance.new("Attachment", bullet)
+		local lv = Instance.new("LinearVelocity")
+		lv.Attachment0 = lvAtt
+		lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+		lv.VectorVelocity = direction * bulletSpeed
+		lv.MaxForce = math.huge
+		lv.RelativeTo = Enum.ActuatorRelativeTo.World
+		lv.Parent = bullet
 
 		bullet.Parent = workspace
-
-		-- Pre-set velocity and force immediate ownership to avoid stutter
 		bullet:SetNetworkOwner(nil)
-		bullet.Velocity = direction * bulletSpeed
-		bullet.AssemblyLinearVelocity = direction * bulletSpeed
 
 		Debris:AddItem(bullet, 3)
 
@@ -531,7 +531,7 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 					if isHead then dmg = dmg * 1.5 end
 					humanoid:TakeDamage(dmg)
 
-					-- Tell the client to show the damage popup
+					-- Triggers the DamageIndicators.lua LocalScript!
 					damageIndicatorEvent:FireClient(player, dmg, hit.Position, isHead)
 				end
 			elseif not hit.CanCollide then
