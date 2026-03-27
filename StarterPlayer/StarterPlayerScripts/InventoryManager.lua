@@ -1,11 +1,14 @@
 -- @ScriptType: LocalScript
+-- @ScriptType: LocalScript
 local Players = game:GetService("Players")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
 
 local GameData = require(ReplicatedStorage:WaitForChild("GameData"))
+local renderBulletEvent = ReplicatedStorage:WaitForChild("RenderBulletEvent")
 
 pcall(function()
 	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
@@ -118,6 +121,74 @@ local currentUseAnimIndex = 1
 local moveConnection = nil
 local lastFireTime = 0
 local isReloading = false
+
+-- Added ignoreCharacter parameter
+local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
+	local visual = Instance.new("Part")
+	visual.Name = "VisualBullet"
+	visual.Shape = Enum.PartType.Ball
+	visual.Size = Vector3.new(0.2, 0.2, 0.2)
+	visual.BrickColor = BrickColor.new("New Yeller")
+	visual.Material = Enum.Material.Neon
+	visual.CanCollide = false
+	visual.Massless = true
+	visual.CFrame = CFrame.lookAt(startPos + direction * 4, startPos + direction * 5)
+
+	local att0 = Instance.new("Attachment", visual)
+	att0.Position = Vector3.new(0, 0.1, 0)
+	local att1 = Instance.new("Attachment", visual)
+	att1.Position = Vector3.new(0, -0.1, 0)
+
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = att0
+	trail.Attachment1 = att1
+	trail.Color = ColorSequence.new(Color3.new(1, 0.8, 0))
+	trail.Lifetime = 0.15
+	trail.MinLength = 0
+
+	trail.WidthScale = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 0)
+	})
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1)
+	})
+
+	trail.Parent = visual
+
+	local bv = Instance.new("BodyVelocity")
+	bv.Velocity = direction * speed
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Parent = visual
+
+	visual.Parent = workspace
+	Debris:AddItem(visual, 3)
+
+	-- Mirrors the server's collision logic locally to instantly destroy the visual
+	local hitConnection
+	hitConnection = visual.Touched:Connect(function(hit)
+		if ignoreCharacter and hit:IsDescendantOf(ignoreCharacter) then return end
+		if hit.Name == "VisualBullet" or hit.Name == "Bullet" or hit.Name == "BulletHitbox" then return end
+		if string.lower(hit.Name) == "fence" then return end
+
+		if hit.Name == "Hitbox" or hit.Name == "HeadHitbox" then
+			if hitConnection then hitConnection:Disconnect() end
+			visual:Destroy()
+			return
+		end
+
+		if not hit.CanCollide then return end
+
+		if hitConnection then hitConnection:Disconnect() end
+		visual:Destroy()
+	end)
+end
+
+-- Receives the shooter's character from the server
+renderBulletEvent.OnClientEvent:Connect(function(startPos, direction, speed, ignoreCharacter)
+	renderVisualBullet(startPos, direction, speed, ignoreCharacter)
+end)
 
 local function refreshAmmoUI()
 	local avatarData = player:FindFirstChild("AvatarData")
@@ -493,7 +564,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 					if canUse and itemData.FireRate then
 						if currentTime - lastFireTime < itemData.FireRate then
-							canUse = falsea
+							canUse = false
 						else
 							lastFireTime = currentTime
 						end
@@ -504,16 +575,31 @@ UserInputService.InputBegan:Connect(function(input, processed)
 						mouse.TargetFilter = player.Character
 						local mousePos = mouse.Hit.Position
 
+						local weapon = player.Character:FindFirstChild("EquippedItem")
+						local rightArm = player.Character:FindFirstChild("Right Arm")
+						local root = player.Character:FindFirstChild("HumanoidRootPart")
+						local startPos = weapon and weapon.PrimaryPart and weapon.PrimaryPart.Position or (rightArm and rightArm.Position) or (root and root.Position)
+
 						if itemData.MaxClip then
 							local avatarData = player:FindFirstChild("AvatarData")
 							local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
+
 							if not clipVal or clipVal.Value <= 0 then
 								canUse = false
 								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Empty", selectedItemName)
 							else
+								if startPos then
+									local direction = (mousePos - startPos).Unit
+									-- Pass local player's character to ignore
+									renderVisualBullet(startPos, direction, itemData.BulletSpeed or 500, player.Character)
+								end
 								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
 							end
 						else
+							if startPos then
+								local direction = (mousePos - startPos).Unit
+								renderVisualBullet(startPos, direction, itemData.BulletSpeed or 500, player.Character)
+							end
 							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
 						end
 					end
