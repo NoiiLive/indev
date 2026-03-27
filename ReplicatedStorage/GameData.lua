@@ -6,10 +6,11 @@ GameData.Items = {
 		Name = "Smith & Wesson .38",
 		Type = "Weapon",
 		Description = "A standard issue .38 caliber revolver.",
+		Model = "sm38",
 		Animations = {
-			Idle = 0,
-			Walk = 0,
-			Run = 0
+			Idle = 140360516572974,
+			Walk = 140360516572974,
+			Run = 140360516572974
 		}
 	}
 }
