@@ -1,4 +1,5 @@
 -- @ScriptType: Script
+-- @ScriptType: Script
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
@@ -121,12 +122,6 @@ end
 
 local function applyAvatar(character, data)
 	local humanoid = character:WaitForChild("Humanoid")
-
-	for _, child in ipairs(character:GetChildren()) do
-		if child:IsA("Accessory") or child:IsA("CharacterMesh") then
-			child:Destroy()
-		end
-	end
 
 	local description = Instance.new("HumanoidDescription")
 	description.HairAccessory = tostring(data.Hair)
