@@ -1,4 +1,5 @@
 -- @ScriptType: LocalScript
+-- @ScriptType: LocalScript
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -90,7 +91,7 @@ barberGui.Enabled = false
 barberGui.Parent = playerGui
 
 local barberFrame = Instance.new("Frame")
-barberFrame.Size = UDim2.new(0, 260, 0, 340)
+barberFrame.Size = UDim2.new(0, 260, 0, 345) -- Increased height slightly so the bottom button's border isn't clipped
 barberFrame.Position = UDim2.new(0.5, -130, 0.5, -170)
 barberFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 barberFrame.BorderColor3 = Color3.fromRGB(80, 80, 80)
@@ -232,7 +233,8 @@ local function openDialogue(npcId, npcPart)
 		btn.MouseButton1Click:Connect(function() handleAction(option.Action) end)
 		totalY = totalY + 34
 	end
-	optionsScroll.CanvasSize = UDim2.new(0, 0, 0, totalY)
+	-- Added 10 pixels to the canvas size so the bottom option's border doesn't clip
+	optionsScroll.CanvasSize = UDim2.new(0, 0, 0, totalY + 10)
 	dialogueGui.Enabled = true
 end
 
