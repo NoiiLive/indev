@@ -94,79 +94,14 @@ local dragGhost = nil
 local hoverData = nil
 local selectedHotbarSlot = nil
 
-local defaultAnimations = {Idle = {}, Walk = nil, Run = nil}
-local defaultAnimsSaved = false
+local loadedItemAnims = {Idle = nil, Walk = nil, Run = nil}
+local currentAnimState = "None"
+local moveConnection = nil
 
-local function saveDefaultAnimations(character)
-	local animate = character:WaitForChild("Animate", 5)
-	if not animate then return end
-
-	if animate:FindFirstChild("idle") then
-		defaultAnimations.Idle = {}
-		for _, child in ipairs(animate.idle:GetChildren()) do
-			if child:IsA("Animation") then
-				table.insert(defaultAnimations.Idle, {obj = child, id = child.AnimationId})
-			end
-		end
-	end
-	if animate:FindFirstChild("walk") and animate.walk:FindFirstChildWhichIsA("Animation") then
-		local anim = animate.walk:FindFirstChildWhichIsA("Animation")
-		defaultAnimations.Walk = {obj = anim, id = anim.AnimationId}
-	end
-	if animate:FindFirstChild("run") and animate.run:FindFirstChildWhichIsA("Animation") then
-		local anim = animate.run:FindFirstChildWhichIsA("Animation")
-		defaultAnimations.Run = {obj = anim, id = anim.AnimationId}
-	end
-	defaultAnimsSaved = true
-end
-
-local function applyAnimations(itemName)
-	local character = player.Character
-	if not character then return end
-	local animate = character:FindFirstChild("Animate")
-	if not animate or not defaultAnimsSaved then return end
-
-	local itemData = nil
-	if itemName then
-		itemData = GameData.Items[itemName]
-	end
-
-	local function setAnim(path, newId)
-		if path then
-			if newId and newId ~= 0 then
-				path.obj.AnimationId = "rbxassetid://" .. tostring(newId)
-			else
-				path.obj.AnimationId = path.id
-			end
-		end
-	end
-
-	if itemData and itemData.Animations then
-		for _, idleData in ipairs(defaultAnimations.Idle) do
-			if itemData.Animations.Idle and itemData.Animations.Idle ~= 0 then
-				idleData.obj.AnimationId = "rbxassetid://" .. tostring(itemData.Animations.Idle)
-			else
-				idleData.obj.AnimationId = idleData.id
-			end
-		end
-		setAnim(defaultAnimations.Walk, itemData.Animations.Walk)
-		setAnim(defaultAnimations.Run, itemData.Animations.Run)
-	else
-		for _, idleData in ipairs(defaultAnimations.Idle) do
-			idleData.obj.AnimationId = idleData.id
-		end
-		setAnim(defaultAnimations.Walk, nil)
-		setAnim(defaultAnimations.Run, nil)
-	end
-
-	local humanoid = character:FindFirstChild("Humanoid")
-	if humanoid then
-		local currentState = humanoid:GetState()
-		if currentState ~= Enum.HumanoidStateType.Dead then
-			humanoid:ChangeState(Enum.HumanoidStateType.None)
-			humanoid:ChangeState(currentState)
-		end
-	end
+local function stopItemAnims()
+	if loadedItemAnims.Idle then loadedItemAnims.Idle:Stop() end
+	if loadedItemAnims.Walk then loadedItemAnims.Walk:Stop() end
+	if loadedItemAnims.Run then loadedItemAnims.Run:Stop() end
 end
 
 local function updateEquippedItem()
@@ -175,10 +110,76 @@ local function updateEquippedItem()
 		selectedItemName = hotbarLabels[selectedHotbarSlot].Text
 	end
 
+	local equipName = selectedItemName or ""
+	ReplicatedStorage:WaitForChild("EquipEvent"):FireServer(equipName)
+
+	if moveConnection then 
+		moveConnection:Disconnect() 
+		moveConnection = nil 
+	end
+
+	stopItemAnims()
+	loadedItemAnims = {Idle = nil, Walk = nil, Run = nil}
+	currentAnimState = "None"
+
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChild("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChild("Animator")
+	if not animator then return end
+
 	if selectedItemName and selectedItemName ~= "" then
-		applyAnimations(selectedItemName)
-	else
-		applyAnimations(nil)
+		local itemData = GameData.Items[selectedItemName]
+		if itemData and itemData.Animations then
+			local anims = itemData.Animations
+
+			local function loadAnim(id)
+				if not id or id == 0 then return nil end
+				local anim = Instance.new("Animation")
+				anim.AnimationId = "rbxassetid://" .. tostring(id)
+				local track = animator:LoadAnimation(anim)
+				track.Priority = Enum.AnimationPriority.Action
+				return track
+			end
+
+			loadedItemAnims.Idle = loadAnim(anims.Idle)
+			loadedItemAnims.Walk = loadAnim(anims.Walk)
+			loadedItemAnims.Run = loadAnim(anims.Run)
+
+			local function onRunning(speed)
+				local targetState = "Idle"
+				if speed > 0.5 then
+					if speed > 16 and loadedItemAnims.Run then
+						targetState = "Run"
+					elseif loadedItemAnims.Walk then
+						targetState = "Walk"
+					else
+						targetState = "Idle"
+					end
+				end
+
+				if currentAnimState ~= targetState then
+					if currentAnimState == "Idle" and loadedItemAnims.Idle then loadedItemAnims.Idle:Stop() end
+					if currentAnimState == "Walk" and loadedItemAnims.Walk then loadedItemAnims.Walk:Stop() end
+					if currentAnimState == "Run" and loadedItemAnims.Run then loadedItemAnims.Run:Stop() end
+
+					currentAnimState = targetState
+
+					if currentAnimState == "Idle" and loadedItemAnims.Idle then loadedItemAnims.Idle:Play() end
+					if currentAnimState == "Walk" and loadedItemAnims.Walk then loadedItemAnims.Walk:Play() end
+					if currentAnimState == "Run" and loadedItemAnims.Run then loadedItemAnims.Run:Play() end
+				end
+			end
+
+			moveConnection = humanoid.Running:Connect(onRunning)
+
+			local rootPart = character:FindFirstChild("HumanoidRootPart")
+			local currentSpeed = 0
+			if rootPart then
+				currentSpeed = Vector3.new(rootPart.Velocity.X, 0, rootPart.Velocity.Z).Magnitude
+			end
+			onRunning(currentSpeed)
+		end
 	end
 end
 
@@ -384,14 +385,8 @@ player.ChildAdded:Connect(function(child)
 end)
 
 player.CharacterAdded:Connect(function(char)
-	defaultAnimsSaved = false
-	saveDefaultAnimations(char)
 	updateEquippedItem()
 end)
-
-if player.Character then
-	saveDefaultAnimations(player.Character)
-end
 
 local existingData = player:FindFirstChild("AvatarData")
 if existingData then
