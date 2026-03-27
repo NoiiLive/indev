@@ -18,7 +18,16 @@ local inventoryGui = Instance.new("ScreenGui")
 inventoryGui.Name = "CustomInventory"
 inventoryGui.ResetOnSpawn = false
 inventoryGui.IgnoreGuiInset = true
+inventoryGui.Enabled = false
 inventoryGui.Parent = playerGui
+
+task.spawn(function()
+	local mainMenu = playerGui:WaitForChild("MainMenuGui", 10)
+	if mainMenu then
+		mainMenu.Destroying:Wait()
+	end
+	inventoryGui.Enabled = true
+end)
 
 local hotbarFrame = Instance.new("Frame")
 hotbarFrame.Size = UDim2.new(0, 350, 0, 70)
@@ -62,10 +71,16 @@ gridScroll.ScrollBarThickness = 4
 gridScroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 80)
 gridScroll.Parent = menuFrame
 
+local gridPadding = Instance.new("UIPadding")
+gridPadding.PaddingTop = UDim.new(0, 5)
+gridPadding.PaddingBottom = UDim.new(0, 5)
+gridPadding.Parent = gridScroll
+
 local gridLayout = Instance.new("UIGridLayout")
 gridLayout.CellSize = UDim2.new(0, 80, 0, 80)
 gridLayout.CellPadding = UDim2.new(0, 10, 0, 10)
 gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 gridLayout.Parent = gridScroll
 
 local hotbarFrames = {}
@@ -77,12 +92,105 @@ local isDragging = false
 local dragData = nil
 local dragGhost = nil
 local hoverData = nil
-local selectedHotbarSlot = 1
+local selectedHotbarSlot = nil
+
+local defaultAnimations = {Idle = {}, Walk = nil, Run = nil}
+local defaultAnimsSaved = false
+
+local function saveDefaultAnimations(character)
+	local animate = character:WaitForChild("Animate", 5)
+	if not animate then return end
+
+	if animate:FindFirstChild("idle") then
+		defaultAnimations.Idle = {}
+		for _, child in ipairs(animate.idle:GetChildren()) do
+			if child:IsA("Animation") then
+				table.insert(defaultAnimations.Idle, {obj = child, id = child.AnimationId})
+			end
+		end
+	end
+	if animate:FindFirstChild("walk") and animate.walk:FindFirstChildWhichIsA("Animation") then
+		local anim = animate.walk:FindFirstChildWhichIsA("Animation")
+		defaultAnimations.Walk = {obj = anim, id = anim.AnimationId}
+	end
+	if animate:FindFirstChild("run") and animate.run:FindFirstChildWhichIsA("Animation") then
+		local anim = animate.run:FindFirstChildWhichIsA("Animation")
+		defaultAnimations.Run = {obj = anim, id = anim.AnimationId}
+	end
+	defaultAnimsSaved = true
+end
+
+local function applyAnimations(itemName)
+	local character = player.Character
+	if not character then return end
+	local animate = character:FindFirstChild("Animate")
+	if not animate or not defaultAnimsSaved then return end
+
+	local itemData = nil
+	if itemName then
+		itemData = GameData.Items[itemName]
+	end
+
+	local function setAnim(path, newId)
+		if path then
+			if newId and newId ~= 0 then
+				path.obj.AnimationId = "rbxassetid://" .. tostring(newId)
+			else
+				path.obj.AnimationId = path.id
+			end
+		end
+	end
+
+	if itemData and itemData.Animations then
+		for _, idleData in ipairs(defaultAnimations.Idle) do
+			if itemData.Animations.Idle and itemData.Animations.Idle ~= 0 then
+				idleData.obj.AnimationId = "rbxassetid://" .. tostring(itemData.Animations.Idle)
+			else
+				idleData.obj.AnimationId = idleData.id
+			end
+		end
+		setAnim(defaultAnimations.Walk, itemData.Animations.Walk)
+		setAnim(defaultAnimations.Run, itemData.Animations.Run)
+	else
+		for _, idleData in ipairs(defaultAnimations.Idle) do
+			idleData.obj.AnimationId = idleData.id
+		end
+		setAnim(defaultAnimations.Walk, nil)
+		setAnim(defaultAnimations.Run, nil)
+	end
+
+	local humanoid = character:FindFirstChild("Humanoid")
+	if humanoid then
+		local currentState = humanoid:GetState()
+		if currentState ~= Enum.HumanoidStateType.Dead then
+			humanoid:ChangeState(Enum.HumanoidStateType.None)
+			humanoid:ChangeState(currentState)
+		end
+	end
+end
+
+local function updateEquippedItem()
+	local selectedItemName = nil
+	if selectedHotbarSlot and hotbarLabels[selectedHotbarSlot] then
+		selectedItemName = hotbarLabels[selectedHotbarSlot].Text
+	end
+
+	if selectedItemName and selectedItemName ~= "" then
+		applyAnimations(selectedItemName)
+	else
+		applyAnimations(nil)
+	end
+end
 
 local function selectSlot(index)
-	selectedHotbarSlot = index
+	if selectedHotbarSlot == index then
+		selectedHotbarSlot = nil
+	else
+		selectedHotbarSlot = index
+	end
+
 	for i, frame in ipairs(hotbarFrames) do
-		if i == index then
+		if i == selectedHotbarSlot then
 			frame.BorderColor3 = Color3.fromRGB(200, 200, 200)
 			frame.BorderSizePixel = 2
 		else
@@ -90,6 +198,8 @@ local function selectSlot(index)
 			frame.BorderSizePixel = 1
 		end
 	end
+
+	updateEquippedItem()
 end
 
 local function startDrag(slotType, index, itemName)
@@ -203,8 +313,6 @@ for i = 1, 20 do
 	storedLabels[i] = itemLabel
 end
 
-selectSlot(1)
-
 local function refreshInventory()
 	if isDragging then return end
 	local avatarData = player:FindFirstChild("AvatarData")
@@ -222,6 +330,7 @@ local function refreshInventory()
 		for i = 1, 20 do
 			storedLabels[i].Text = data.Stored[i] or ""
 		end
+		updateEquippedItem()
 	end
 end
 
@@ -274,6 +383,16 @@ player.ChildAdded:Connect(function(child)
 	end
 end)
 
+player.CharacterAdded:Connect(function(char)
+	defaultAnimsSaved = false
+	saveDefaultAnimations(char)
+	updateEquippedItem()
+end)
+
+if player.Character then
+	saveDefaultAnimations(player.Character)
+end
+
 local existingData = player:FindFirstChild("AvatarData")
 if existingData then
 	local invVal = existingData:FindFirstChild("InventoryData")
@@ -291,7 +410,7 @@ end
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-	if input.KeyCode == Enum.KeyCode.B then
+	if input.KeyCode == Enum.KeyCode.B or input.KeyCode == Enum.KeyCode.Backquote then
 		menuFrame.Visible = not menuFrame.Visible
 	elseif input.KeyCode == Enum.KeyCode.One then
 		selectSlot(1)
