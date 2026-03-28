@@ -1,14 +1,17 @@
 -- @ScriptType: Script
+-- @ScriptType: Script
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
+local HttpService = game:GetService("HttpService")
 
 local GameData = require(ReplicatedStorage:WaitForChild("GameData"))
 local weaponActionEvent = ReplicatedStorage:WaitForChild("WeaponActionEvent")
 local damageIndicatorEvent = ReplicatedStorage:WaitForChild("DamageIndicatorEvent")
 local renderBulletEvent = ReplicatedStorage:WaitForChild("RenderBulletEvent")
 
-weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, targetPos)
+-- Added slotIndex as the 5th parameter
+weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, targetPos, slotIndex)
 	local playerFolder = player:FindFirstChild("AvatarData")
 	if not playerFolder then return end
 
@@ -142,7 +145,52 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 	if action == "Empty" then
 		play3DSound("fire_empty")
 	elseif action == "Fire" then
-		if itemData.MaxClip then
+		if itemData.Type == "Consumable" then
+			if weaponName == "Ammo Pack" then
+				local reserveVal = playerFolder:FindFirstChild("ReserveAmmo")
+				if reserveVal then
+					reserveVal.Value = reserveVal.Value + 10
+					if itemData.UseSound then play3DSound(itemData.UseSound) end
+
+					local invVal = playerFolder:FindFirstChild("InventoryData")
+					if invVal then
+						local success, inv = pcall(function() return HttpService:JSONDecode(invVal.Value) end)
+						if success and inv then
+							local consumed = false
+
+							-- Precise targeted slot wipe
+							if slotIndex and typeof(slotIndex) == "number" and inv.Hotbar[slotIndex] == weaponName then
+								inv.Hotbar[slotIndex] = ""
+								consumed = true
+							end
+
+							-- Fallback safety net (just in case)
+							if not consumed then
+								for i=1, 5 do
+									if inv.Hotbar[i] == weaponName then
+										inv.Hotbar[i] = ""
+										consumed = true
+										break
+									end
+								end
+								if not consumed then
+									for i=1, 20 do
+										if inv.Stored[i] == weaponName then
+											inv.Stored[i] = ""
+											break
+										end
+									end
+								end
+							end
+
+							if consumed then
+								invVal.Value = HttpService:JSONEncode(inv)
+							end
+						end
+					end
+				end
+			end
+		elseif itemData.MaxClip then
 			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
 			if clipVal and clipVal.Value > 0 then
 				clipVal.Value = clipVal.Value - 1
