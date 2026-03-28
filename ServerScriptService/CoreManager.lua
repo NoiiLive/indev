@@ -1,5 +1,4 @@
 -- @ScriptType: Script
--- @ScriptType: Script
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
@@ -457,6 +456,128 @@ equipEvent.OnServerEvent:Connect(function(player, itemName)
 	end
 end)
 
+local function initializeItemSpawns()
+	local spawnpoints = workspace:FindFirstChild("Spawnpoints")
+	if not spawnpoints then return end
+
+	local spawnablePool = {}
+	local totalWeight = 0
+
+	for itemName, data in pairs(GameData.Items) do
+		if data.Spawnable and data.Rarity then
+			table.insert(spawnablePool, {Name = itemName, Weight = data.Rarity, Data = data})
+			totalWeight = totalWeight + data.Rarity
+		end
+	end
+
+	if totalWeight <= 0 then return end
+
+	for _, spawnPart in ipairs(spawnpoints:GetChildren()) do
+		if spawnPart:IsA("BasePart") and string.lower(spawnPart.Name) == "item_spawn" then
+			spawnPart.Transparency = 1
+			spawnPart.CanCollide = false
+
+			if math.random() <= 0.5 then
+				local roll = math.random(1, totalWeight)
+				local currentWeight = 0
+				local selectedItem = nil
+
+				for _, item in ipairs(spawnablePool) do
+					currentWeight = currentWeight + item.Weight
+					if roll <= currentWeight then
+						selectedItem = item
+						break
+					end
+				end
+
+				if selectedItem then
+					local itemModel
+					local itemsFolder = ReplicatedStorage:FindFirstChild("Items")
+
+					if itemsFolder and selectedItem.Data.Model and selectedItem.Data.Model ~= "" then
+						local template = itemsFolder:FindFirstChild(selectedItem.Data.Model)
+						if template then
+							itemModel = template:Clone()
+						end
+					end
+
+					if not itemModel then
+						itemModel = Instance.new("Part")
+						itemModel.Size = Vector3.new(1, 1, 1)
+						itemModel.BrickColor = BrickColor.new("Bright green")
+						itemModel.Material = Enum.Material.SmoothPlastic
+					end
+
+					itemModel.Name = "Dropped_" .. selectedItem.Name
+
+					local promptPart = itemModel
+					if itemModel:IsA("Model") then
+						promptPart = itemModel.PrimaryPart or itemModel:FindFirstChildWhichIsA("BasePart")
+						for _, desc in ipairs(itemModel:GetDescendants()) do
+							if desc:IsA("BasePart") then
+								desc.Anchored = true
+								desc.CanCollide = true
+							end
+						end
+						if promptPart then
+							itemModel:PivotTo(spawnPart.CFrame * CFrame.new(0, 0, 0))
+						else
+							itemModel:MoveTo(spawnPart.Position + Vector3.new(0, 0, 0))
+						end
+					else
+						itemModel.Anchored = true
+						itemModel.CanCollide = true
+						itemModel.CFrame = spawnPart.CFrame * CFrame.new(0, 0, 0)
+					end
+
+					if promptPart then
+						local prompt = Instance.new("ProximityPrompt")
+						prompt.ActionText = "Pick Up"
+						prompt.ObjectText = selectedItem.Name
+						prompt.RequiresLineOfSight = false
+						prompt.HoldDuration = 0.5
+						prompt.Parent = promptPart
+
+						prompt.Triggered:Connect(function(plr)
+							local avatarData = plr:FindFirstChild("AvatarData")
+							local invVal = avatarData and avatarData:FindFirstChild("InventoryData")
+							if invVal then
+								local success, inv = pcall(function() return HttpService:JSONDecode(invVal.Value) end)
+								if success and inv then
+									local added = false
+									for i = 1, 5 do
+										if inv.Hotbar[i] == "" then
+											inv.Hotbar[i] = selectedItem.Name
+											added = true
+											break
+										end
+									end
+									if not added then
+										for i = 1, 20 do
+											if inv.Stored[i] == "" then
+												inv.Stored[i] = selectedItem.Name
+												added = true
+												break
+											end
+										end
+									end
+
+									if added then
+										invVal.Value = HttpService:JSONEncode(inv)
+										itemModel:Destroy()
+									end
+								end
+							end
+						end)
+					end
+
+					itemModel.Parent = workspace
+				end
+			end
+		end
+	end
+end
+
 Players.PlayerAdded:Connect(function(player)
 	local isNew = false
 	local savedData = nil
@@ -498,6 +619,8 @@ Players.PlayerRemoving:Connect(function(player)
 	end
 	sessionData[player.UserId] = nil
 end)
+
+initializeItemSpawns()
 
 game:BindToClose(function()
 	if RunService:IsStudio() then return end
