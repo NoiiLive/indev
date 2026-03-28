@@ -166,7 +166,7 @@ local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ig
 
 		if isBlood then
 			p.Size = Vector3.new(0.2, 0.2, 0.2) 
-			p.Color = Color3.fromRGB(170, 0, 0)
+			p.Color = Color3.fromRGB(130, 0, 0)
 			p.Material = Enum.Material.Plastic 
 		else
 			p.Size = Vector3.new(0.4, 0.4, 0.4)
@@ -206,7 +206,7 @@ local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ig
 			local hitConn
 			hitConn = p.Touched:Connect(function(hitObj)
 				local hitName = string.lower(hitObj.Name)
-				if hitName == "hitbox" or hitName == "headhitbox" or hitName == "visualbullet" or hitName == "bullet" or hitName == "fence" or hitName == "water" then return end
+				if hitName == "hitbox" or hitName == "headhitbox" or hitName == "visualbullet" or hitName == "visualbullethitbox" or hitName == "bullet" or hitName == "fence" or hitName == "water" then return end
 
 				if hitObj.Parent and hitObj.Parent:FindFirstChildOfClass("Humanoid") then return end
 				if not hitObj.CanCollide then return end
@@ -224,7 +224,7 @@ local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ig
 				if ray and ray.Normal.Y > 0.7 then
 					local puddle = Instance.new("Part")
 					puddle.Size = Vector3.new(math.random(10, 15)/10, math.random(10, 15)/10, 0.02)
-					puddle.Color = Color3.fromRGB(170, 0, 0)
+					puddle.Color = Color3.fromRGB(130, 0, 0)
 					puddle.Material = Enum.Material.Plastic 
 					puddle.Anchored = true
 					puddle.CanCollide = false
@@ -243,15 +243,29 @@ local function spawnHitParticles(position, bulletDirection, hitPart, isBlood, ig
 end
 
 local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
+	local visualHitbox = Instance.new("Part")
+	visualHitbox.Name = "VisualBulletHitbox"
+	visualHitbox.Size = Vector3.new(0.5, 0.5, 1.5)
+	visualHitbox.Transparency = 1
+	visualHitbox.CanCollide = false
+	visualHitbox.Massless = true
+	visualHitbox.CFrame = CFrame.lookAt(startPos + direction * 4, startPos + direction * 5)
+
 	local visual = Instance.new("Part")
 	visual.Name = "VisualBullet"
 	visual.Shape = Enum.PartType.Ball
-	visual.Size = Vector3.new(0.5, 0.5, 0.5)
+	visual.Size = Vector3.new(0.2, 0.2, 0.2)
 	visual.BrickColor = BrickColor.new("New Yeller")
 	visual.Material = Enum.Material.Neon
 	visual.CanCollide = false
 	visual.Massless = true
-	visual.CFrame = CFrame.lookAt(startPos + direction * 4, startPos + direction * 5)
+	visual.CFrame = visualHitbox.CFrame
+	visual.Parent = visualHitbox
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = visualHitbox
+	weld.Part1 = visual
+	weld.Parent = visual
 
 	local att0 = Instance.new("Attachment", visual)
 	att0.Position = Vector3.new(0, 0.1, 0)
@@ -279,15 +293,15 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 	local bv = Instance.new("BodyVelocity")
 	bv.Velocity = direction * speed
 	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	bv.Parent = visual
+	bv.Parent = visualHitbox
 
-	visual.Parent = workspace
-	Debris:AddItem(visual, 3)
+	visualHitbox.Parent = workspace
+	Debris:AddItem(visualHitbox, 3)
 
 	local hitConnection
-	hitConnection = visual.Touched:Connect(function(hit)
+	hitConnection = visualHitbox.Touched:Connect(function(hit)
 		if ignoreCharacter and hit:IsDescendantOf(ignoreCharacter) then return end
-		if hit.Name == "VisualBullet" or hit.Name == "Bullet" or hit.Name == "BulletHitbox" then return end
+		if hit.Name == "VisualBullet" or hit.Name == "VisualBulletHitbox" or hit.Name == "Bullet" or hit.Name == "BulletHitbox" then return end
 
 		local hitName = string.lower(hit.Name)
 		if hitName == "fence" or hitName == "water" then return end
@@ -305,10 +319,10 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 				hit.Transparency = 1
 				hit.CanCollide = false
 			end
-			playHitSound(visual.Position, "hit_glass")
-			spawnHitParticles(visual.Position, direction, hit, false, ignoreCharacter)
+			playHitSound(visualHitbox.Position, "hit_glass")
+			spawnHitParticles(visualHitbox.Position, direction, hit, false, ignoreCharacter)
 			if hitConnection then hitConnection:Disconnect() end
-			visual:Destroy()
+			visualHitbox:Destroy()
 			return
 		end
 
@@ -321,21 +335,21 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 		end
 
 		if humanoid then
-			playHitSound(visual.Position, "hit_person")
-			spawnHitParticles(visual.Position, direction, hit, true, ignoreCharacter)
+			playHitSound(visualHitbox.Position, "hit_person")
+			spawnHitParticles(visualHitbox.Position, direction, hit, true, ignoreCharacter)
 			if hitConnection then hitConnection:Disconnect() end
-			visual:Destroy()
+			visualHitbox:Destroy()
 			return
 		end
 
 		if not hit.CanCollide then return end
 
 		local rayParams = RaycastParams.new()
-		rayParams.FilterDescendantsInstances = getCharacterIgnoreList({visual, ignoreCharacter})
+		rayParams.FilterDescendantsInstances = getCharacterIgnoreList({visualHitbox, ignoreCharacter})
 		rayParams.FilterType = Enum.RaycastFilterType.Exclude
 		rayParams.RespectCanCollide = true 
 
-		local dist = (visual.Position - startPos).Magnitude
+		local dist = (visualHitbox.Position - startPos).Magnitude
 		local ray = workspace:Raycast(startPos, direction * (dist + 5), rayParams)
 
 		if ray then
@@ -351,10 +365,10 @@ local function renderVisualBullet(startPos, direction, speed, ignoreCharacter)
 			Debris:AddItem(hole, 15)
 		end
 
-		playHitSound(visual.Position, "hit_ground")
-		spawnHitParticles(visual.Position, direction, hit, false, ignoreCharacter)
+		playHitSound(visualHitbox.Position, "hit_ground")
+		spawnHitParticles(visualHitbox.Position, direction, hit, false, ignoreCharacter)
 		if hitConnection then hitConnection:Disconnect() end
-		visual:Destroy()
+		visualHitbox:Destroy()
 	end)
 end
 
@@ -650,20 +664,25 @@ UserInputService.InputEnded:Connect(function(input)
 		if dragGhost then dragGhost:Destroy() dragGhost = nil end
 
 		if hoverData then
-			local avatarData = player:FindFirstChild("AvatarData")
-			local invVal = avatarData and avatarData:FindFirstChild("InventoryData")
-			if invVal then
-				local data = HttpService:JSONDecode(invVal.Value)
-				for i=1, 5 do data.Hotbar[i] = data.Hotbar[i] or "" end
-				for i=1, 20 do data.Stored[i] = data.Stored[i] or "" end
+			if hoverData.Type == dragData.Type and hoverData.Index == dragData.Index then
+				refreshInventory()
+			else
+				local avatarData = player:FindFirstChild("AvatarData")
+				local invVal = avatarData and avatarData:FindFirstChild("InventoryData")
+				if invVal then
+					local data = HttpService:JSONDecode(invVal.Value)
+					for i=1, 5 do data.Hotbar[i] = data.Hotbar[i] or "" end
+					for i=1, 20 do data.Stored[i] = data.Stored[i] or "" end
 
-				local targetItem = ""
-				if hoverData.Type == "Hotbar" then targetItem = data.Hotbar[hoverData.Index] else targetItem = data.Stored[hoverData.Index] end
+					local targetItem = ""
+					if hoverData.Type == "Hotbar" then targetItem = data.Hotbar[hoverData.Index] else targetItem = data.Stored[hoverData.Index] end
 
-				if hoverData.Type == "Hotbar" then data.Hotbar[hoverData.Index] = dragData.Item else data.Stored[hoverData.Index] = dragData.Item end
-				if dragData.Type == "Hotbar" then data.Hotbar[dragData.Index] = targetItem else data.Stored[dragData.Index] = targetItem end
+					if hoverData.Type == "Hotbar" then data.Hotbar[hoverData.Index] = dragData.Item else data.Stored[hoverData.Index] = dragData.Item end
+					if dragData.Type == "Hotbar" then data.Hotbar[dragData.Index] = targetItem else data.Stored[dragData.Index] = targetItem end
 
-				ReplicatedStorage:WaitForChild("InventoryEvent"):FireServer(HttpService:JSONEncode(data))
+					ReplicatedStorage:WaitForChild("InventoryEvent"):FireServer(HttpService:JSONEncode(data))
+					refreshInventory()
+				end
 			end
 		else
 			refreshInventory() 
@@ -722,6 +741,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if hoverData then return end
+
 		if not menuFrame.Visible and selectedHotbarSlot then
 			local selectedItemName = hotbarLabels[selectedHotbarSlot].Text
 			if selectedItemName ~= "" then
@@ -752,26 +773,28 @@ UserInputService.InputBegan:Connect(function(input, processed)
 						local root = player.Character:FindFirstChild("HumanoidRootPart")
 						local startPos = weapon and weapon.PrimaryPart and weapon.PrimaryPart.Position or (rightArm and rightArm.Position) or (root and root.Position)
 
-						if itemData.MaxClip then
+						if itemData.Type == "Consumable" then
+							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos, selectedHotbarSlot)
+						elseif itemData.MaxClip then
 							local avatarData = player:FindFirstChild("AvatarData")
 							local clipVal = avatarData and avatarData:FindFirstChild("ClipAmmo")
 
 							if not clipVal or clipVal.Value <= 0 then
 								canUse = false
-								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Empty", selectedItemName)
+								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Empty", selectedItemName, mousePos, selectedHotbarSlot)
 							else
 								if startPos then
 									local direction = (mousePos - startPos).Unit
 									renderVisualBullet(startPos, direction, itemData.BulletSpeed or 500, player.Character)
 								end
-								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
+								ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos, selectedHotbarSlot)
 							end
 						else
 							if startPos then
 								local direction = (mousePos - startPos).Unit
 								renderVisualBullet(startPos, direction, itemData.BulletSpeed or 500, player.Character)
 							end
-							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos)
+							ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Fire", selectedItemName, mousePos, selectedHotbarSlot)
 						end
 					end
 
@@ -808,7 +831,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 							loadedItemAnims.Reload:Play()
 						end
 
-						ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Reload", selectedItemName)
+						ReplicatedStorage:WaitForChild("WeaponActionEvent"):FireServer("Reload", selectedItemName, nil, selectedHotbarSlot)
 
 						task.spawn(function()
 							local rTime = itemData.ReloadTime or 1.5
