@@ -10,7 +10,6 @@ local weaponActionEvent = ReplicatedStorage:WaitForChild("WeaponActionEvent")
 local damageIndicatorEvent = ReplicatedStorage:WaitForChild("DamageIndicatorEvent")
 local renderBulletEvent = ReplicatedStorage:WaitForChild("RenderBulletEvent")
 
--- Added slotIndex as the 5th parameter
 weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, targetPos, slotIndex)
 	local playerFolder = player:FindFirstChild("AvatarData")
 	if not playerFolder then return end
@@ -158,16 +157,14 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 						if success and inv then
 							local consumed = false
 
-							-- Precise targeted slot wipe
-							if slotIndex and typeof(slotIndex) == "number" and inv.Hotbar[slotIndex] == weaponName then
+							if slotIndex and typeof(slotIndex) == "number" and string.split(inv.Hotbar[slotIndex] or "", "_")[1] == weaponName then
 								inv.Hotbar[slotIndex] = ""
 								consumed = true
 							end
 
-							-- Fallback safety net (just in case)
 							if not consumed then
 								for i=1, 5 do
-									if inv.Hotbar[i] == weaponName then
+									if string.split(inv.Hotbar[i] or "", "_")[1] == weaponName then
 										inv.Hotbar[i] = ""
 										consumed = true
 										break
@@ -175,7 +172,7 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 								end
 								if not consumed then
 									for i=1, 20 do
-										if inv.Stored[i] == weaponName then
+										if string.split(inv.Stored[i] or "", "_")[1] == weaponName then
 											inv.Stored[i] = ""
 											break
 										end
@@ -191,12 +188,23 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 				end
 			end
 		elseif itemData.MaxClip then
-			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
-			if clipVal and clipVal.Value > 0 then
-				clipVal.Value = clipVal.Value - 1
+			local invVal = playerFolder:FindFirstChild("InventoryData")
+			if invVal then
+				local success, inv = pcall(function() return HttpService:JSONDecode(invVal.Value) end)
+				if success and inv and slotIndex and inv.Hotbar[slotIndex] then
+					local rawString = inv.Hotbar[slotIndex]
+					local name = string.split(rawString, "_")[1]
+					local currentAmmo = tonumber(string.split(rawString, "_")[2]) or 0
 
-				if itemData.UseSound then play3DSound(itemData.UseSound) end
-				spawnBullet()
+					if name == weaponName and currentAmmo > 0 then
+						currentAmmo = currentAmmo - 1
+						inv.Hotbar[slotIndex] = name .. "_" .. currentAmmo
+						invVal.Value = HttpService:JSONEncode(inv)
+
+						if itemData.UseSound then play3DSound(itemData.UseSound) end
+						spawnBullet()
+					end
+				end
 			end
 		else
 			if itemData.UseSound then play3DSound(itemData.UseSound) end
@@ -204,16 +212,28 @@ weaponActionEvent.OnServerEvent:Connect(function(player, action, weaponName, tar
 		end
 	elseif action == "Reload" then
 		if itemData.MaxClip then
-			local clipVal = playerFolder:FindFirstChild("ClipAmmo")
 			local reserveVal = playerFolder:FindFirstChild("ReserveAmmo")
-			if clipVal and reserveVal then
-				local needed = itemData.MaxClip - clipVal.Value
-				if needed > 0 and reserveVal.Value > 0 then
-					local taken = math.min(needed, reserveVal.Value)
-					clipVal.Value = clipVal.Value + taken
-					reserveVal.Value = reserveVal.Value - taken
+			local invVal = playerFolder:FindFirstChild("InventoryData")
+			if reserveVal and invVal then
+				local success, inv = pcall(function() return HttpService:JSONDecode(invVal.Value) end)
+				if success and inv and slotIndex and inv.Hotbar[slotIndex] then
+					local rawString = inv.Hotbar[slotIndex]
+					local name = string.split(rawString, "_")[1]
+					local currentAmmo = tonumber(string.split(rawString, "_")[2]) or 0
 
-					if itemData.ReloadSound then play3DSound(itemData.ReloadSound) end
+					if name == weaponName then
+						local needed = itemData.MaxClip - currentAmmo
+						if needed > 0 and reserveVal.Value > 0 then
+							local taken = math.min(needed, reserveVal.Value)
+							currentAmmo = currentAmmo + taken
+							reserveVal.Value = reserveVal.Value - taken
+
+							inv.Hotbar[slotIndex] = name .. "_" .. currentAmmo
+							invVal.Value = HttpService:JSONEncode(inv)
+
+							if itemData.ReloadSound then play3DSound(itemData.ReloadSound) end
+						end
+					end
 				end
 			end
 		end
